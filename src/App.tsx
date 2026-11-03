@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  Brain,
   FileText,
   Volume2,
   VolumeX,
@@ -21,6 +22,7 @@ import { VisorHUD } from './components/VisorHUD';
 import { TabletMode } from './components/TabletMode';
 import { CommandCenter } from './components/CommandCenter';
 import { MissionBriefModal } from './components/MissionBriefModal';
+import { AIDashboardModal } from './components/AIDashboardModal';
 
 export const App: React.FC = () => {
   const [siteId, setSiteId] = useState<'jezero' | 'gale'>('jezero');
@@ -28,6 +30,7 @@ export const App: React.FC = () => {
   const [activeLayer, setActiveLayer] = useState<LayerType>('optical');
   const [isMuted, setIsMuted] = useState(false);
   const [isBriefOpen, setIsBriefOpen] = useState(false);
+  const [isAIOpen, setIsAIOpen] = useState(false);
 
   const site = MISSION_SITES[siteId];
 
@@ -202,6 +205,18 @@ export const App: React.FC = () => {
               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 animate-pulse" />}
             </button>
 
+            {/* AI/ML Neural Co-Pilot Trigger */}
+            <button
+              onClick={() => {
+                marsAudio.playClick(1040);
+                setIsAIOpen(true);
+              }}
+              className="bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 border border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.3)] transition-all animate-pulse"
+            >
+              <Brain className="w-3.5 h-3.5 text-purple-400" />
+              <span>AI CO-PILOT (ML)</span>
+            </button>
+
             {/* Mission Briefing Modal Trigger */}
             <button
               onClick={() => {
@@ -275,6 +290,12 @@ export const App: React.FC = () => {
         site={site}
         route={calculatedRoute}
         targetWaypoint={selectedWaypoint}
+      />
+
+      {/* AI / ML Neural Co-Pilot Dashboard Modal */}
+      <AIDashboardModal
+        isOpen={isAIOpen}
+        onClose={() => setIsAIOpen(false)}
       />
 
       {/* Aerospace Footer */}
