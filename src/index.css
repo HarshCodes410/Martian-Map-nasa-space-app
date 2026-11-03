@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #05070a;
+    color: #e2e8f0;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom NASA/HUD Aerospace Stylings */
+.font-mono-tactical {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 0.08em;
+}
+
+.hud-glass {
+  background: rgba(10, 15, 26, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 0 12px rgba(0, 240, 255, 0.05);
+}
+
+.hud-glass-danger {
+  background: rgba(35, 10, 15, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 59, 48, 0.4);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(255, 59, 48, 0.15);
+}
+
+.hud-glass-warning {
+  background: rgba(35, 25, 10, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 179, 0, 0.35);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(255, 179, 0, 0.1);
+}
+
+.hud-glass-science {
+  background: rgba(10, 30, 25, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 230, 153, 0.35);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(0, 230, 153, 0.1);
+}
+
+/* CRT Scanline and Visor Curved Glare */
+.visor-vignette {
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.95), inset 0 0 40px rgba(0, 180, 255, 0.12);
+}
+
+.scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.03),
+    rgba(0, 255, 0, 0.01),
+    rgba(0, 0, 255, 0.03)
+  );
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+/* Pulse Glows */
+@keyframes pulse-cyan {
+  0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 4px #00f0ff); }
+  50% { opacity: 1; filter: drop-shadow(0 0 10px #00f0ff); }
+}
+
+@keyframes pulse-mars {
+  0%, 100% { opacity: 0.7; filter: drop-shadow(0 0 4px #ff5722); }
+  50% { opacity: 1; filter: drop-shadow(0 0 12px #ff5722); }
+}
+
+.animate-pulse-cyan {
+  animation: pulse-cyan 3s infinite ease-in-out;
+}
+
+.animate-pulse-mars {
+  animation: pulse-mars 2.5s infinite ease-in-out;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00f0ff;
+}
