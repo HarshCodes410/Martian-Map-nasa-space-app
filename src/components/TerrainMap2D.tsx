@@ -224,7 +224,7 @@ export const TerrainMap2D: React.FC<TerrainMap2DProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[420px] rounded-xl overflow-hidden border border-cyan-500/20 bg-[#060911]">
+    <div className="relative w-full h-full min-h-[420px] rounded-2xl overflow-hidden border border-slate-700/60 bg-gradient-to-b from-[#111827] to-[#0b0f19] shadow-2xl">
       <canvas
         ref={canvasRef}
         width={700}

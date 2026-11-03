@@ -92,10 +92,13 @@ export const VisorHUD: React.FC<VisorHUDProps> = ({
   const targetEta = route ? `${route.estimatedDurationMins} min` : '32 min';
 
   return (
-    <div className="relative w-full h-[85vh] min-h-[600px] max-h-[850px] rounded-2xl overflow-hidden border-2 border-cyan-500/30 bg-[#02050b] select-none text-slate-100 font-mono-tactical">
-      {/* Curved Visor Vignette and CRT Scanlines */}
+    <div className="relative w-full h-[85vh] min-h-[600px] max-h-[850px] rounded-3xl overflow-hidden border border-slate-700/80 bg-gradient-to-b from-[#0b1329] via-[#1a1424] to-[#3a1d17] select-none text-slate-100 font-mono-tactical shadow-2xl">
+      {/* Background Starry Sky & Martian Desert Horizon Silhouette */}
+      <div className="absolute inset-0 star-pattern opacity-40 pointer-events-none" />
+      <div className="absolute bottom-0 inset-x-0 h-48 bg-gradient-to-t from-[#200e0a] via-[#331812]/80 to-transparent pointer-events-none" />
+
+      {/* Curved Visor Vignette and Subtle CRT Reflections */}
       <div className="absolute inset-0 visor-vignette pointer-events-none z-10" />
-      <div className="absolute inset-0 scanlines opacity-40 pointer-events-none z-10" />
 
       {/* Top Compass Tape */}
       <div className="absolute top-4 inset-x-0 flex flex-col items-center z-20 pointer-events-none">

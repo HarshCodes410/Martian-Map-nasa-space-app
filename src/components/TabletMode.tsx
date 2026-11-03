@@ -72,15 +72,15 @@ export const TabletMode: React.FC<TabletModeProps> = ({
                   marsAudio.playClick();
                   onChangeLayer(l.id);
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all duration-200 shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all duration-200 shrink-0 ${
                   isActive
-                    ? 'bg-cyan-500 text-black font-bold shadow-[0_0_12px_rgba(0,240,255,0.5)]'
+                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold shadow-[0_0_15px_rgba(249,115,22,0.4)]'
                     : 'bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <span className={isActive ? 'text-black' : l.color}>{l.icon}</span>
+                <span className={isActive ? 'text-slate-950 font-bold' : l.color}>{l.icon}</span>
                 <span>{l.name}</span>
-                <span className={`text-[9px] ${isActive ? 'text-slate-800' : 'text-slate-500'}`}>({l.mission})</span>
+                <span className={`text-[9px] ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>({l.mission})</span>
               </button>
             );
           })}
@@ -88,15 +88,15 @@ export const TabletMode: React.FC<TabletModeProps> = ({
 
         {/* 3D vs 2D View Dimension Toggle */}
         <div className="flex items-center gap-2">
-          <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex gap-1">
+          <div className="bg-slate-900/90 p-1 rounded-xl border border-slate-700/60 flex gap-1">
             <button
               onClick={() => {
                 marsAudio.playClick();
                 setViewDimension('3d');
               }}
-              className={`px-3 py-1 text-xs rounded transition-all ${
+              className={`px-3 py-1 text-xs rounded-lg transition-all ${
                 viewDimension === '3d'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 font-bold'
+                  ? 'bg-orange-500/20 text-orange-300 border border-orange-400/40 font-bold'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -107,9 +107,9 @@ export const TabletMode: React.FC<TabletModeProps> = ({
                 marsAudio.playClick();
                 setViewDimension('2d');
               }}
-              className={`px-3 py-1 text-xs rounded transition-all ${
+              className={`px-3 py-1 text-xs rounded-lg transition-all ${
                 viewDimension === '2d'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 font-bold'
+                  ? 'bg-orange-500/20 text-orange-300 border border-orange-400/40 font-bold'
                   : 'text-slate-400 hover:text-white'
               }`}
             >

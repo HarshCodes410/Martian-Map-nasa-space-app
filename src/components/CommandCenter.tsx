@@ -40,21 +40,21 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ site, onSelectSite
             onClick={() => onSelectSite('jezero')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               site.id === 'jezero'
-                ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(0,240,255,0.6)]'
-                : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-[0_0_15px_rgba(249,115,22,0.4)]'
+                : 'bg-slate-900/80 text-slate-300 hover:text-white border border-slate-700/60'
             }`}
           >
-            JEZERO CRATER DELTA
+            JEZERO DELTA
           </button>
           <button
             onClick={() => onSelectSite('gale')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               site.id === 'gale'
-                ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(0,240,255,0.6)]'
-                : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-[0_0_15px_rgba(249,115,22,0.4)]'
+                : 'bg-slate-900/80 text-slate-300 hover:text-white border border-slate-700/60'
             }`}
           >
-            GALE CRATER (BOXWORK 2025)
+            GALE (BOXWORK 2025)
           </button>
         </div>
       </div>

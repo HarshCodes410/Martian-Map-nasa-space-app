@@ -41,8 +41,8 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     // 1. Setup Scene, Camera, Renderer
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x060911);
-    scene.fog = new THREE.FogExp2(0x060911, 0.005);
+    scene.background = new THREE.Color(0x0f172a); // Softer cosmic slate/navy instead of pitch black
+    scene.fog = new THREE.FogExp2(0x181e2b, 0.004);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -54,21 +54,21 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
 
     mountRef.current.appendChild(renderer.domElement);
 
-    // 2. Lighting (Martian low-angle sun + cold blue ambient backfill)
-    const ambientLight = new THREE.AmbientLight(0x2a364a, 1.2);
+    // 2. Lighting (Warm Martian golden-hour sun + sky backfill)
+    const ambientLight = new THREE.AmbientLight(0x384860, 1.4);
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffecd0, 2.4);
+    const sunLight = new THREE.DirectionalLight(0xffecd0, 2.8);
     sunLight.position.set(60, 100, 40);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
     scene.add(sunLight);
 
-    // Subtle blue fill light from Martian night sky
-    const fillLight = new THREE.DirectionalLight(0x3b82f6, 0.6);
-    fillLight.position.set(-60, -40, -50);
-    scene.add(fillLight);
+    // Warm terracotta horizon bounce light
+    const horizonBounce = new THREE.DirectionalLight(0xea580c, 0.55);
+    horizonBounce.position.set(-60, 20, -50);
+    scene.add(horizonBounce);
 
     // 3. Waypoint and Marker Container
     const wpGroup = new THREE.Group();
@@ -360,7 +360,7 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
   }, [route, site]);
 
   return (
-    <div className="relative w-full h-full min-h-[420px] rounded-xl overflow-hidden border border-cyan-500/20 bg-[#060911]">
+    <div className="relative w-full h-full min-h-[420px] rounded-2xl overflow-hidden border border-slate-700/60 bg-gradient-to-b from-[#111827] to-[#0b0f19] shadow-2xl">
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* Top Left 3D Camera Controls overlay */}
