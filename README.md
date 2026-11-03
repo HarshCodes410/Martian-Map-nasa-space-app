@@ -33,17 +33,17 @@ Far from Earth, the first astronauts to set foot on Mars will face the harshest 
 ```
 
 ### 1. Tri-Mode Seamless Operations
-- ** Helmet Visor (HUD Mode)**: First-person augmented reality visor display featuring artificial horizon pitch ladder, compass tape, live consumables countdown ($O_2$ liters, battery hours, suit pressure $29.6\text{ kPa}$), threat matrix, and real Martian atmospheric wind audio synthesis based on Perseverance microphone acoustics.
-- ** EVA Field Tablet**: High-contrast, glove-friendly touchscreen navigation unit with dynamic layer toggles, 3D interactive terrain elevation models, traverse elevation cross-sections, and scientific sample checklists.
-- ** Habitat Surface Operations Command**: Mission control dual-crew telemetry sync (EVA Lead vs. Science Specialist), deep-space orbital communication pass countdowns (MRO, MAVEN, TGO, Odyssey), and scientific drill core sample manifest.
+- **Helmet Visor (HUD Mode)**: First-person augmented reality visor display featuring artificial horizon pitch ladder, compass tape, live consumables countdown ($O_2$ liters, battery hours, suit pressure $29.6\text{ kPa}$), threat matrix, and real Martian atmospheric wind audio synthesis based on Perseverance microphone acoustics.
+- **EVA Field Tablet**: High-contrast, glove-friendly touchscreen navigation unit with dynamic layer toggles, 3D interactive terrain elevation models, traverse elevation cross-sections, and scientific sample checklists.
+- **Habitat Surface Operations Command**: Mission control dual-crew telemetry sync (EVA Lead vs. Science Specialist), deep-space orbital communication pass countdowns (MRO, MAVEN, TGO, Odyssey), and scientific drill core sample manifest.
 
 ### 2. Multi-Mission NASA Science Data Fusion (5 Distinct Layers)
 Addressing the core NASA requirement to layer at least 3 distinct scientific domains:
-1. ** Optical Imagery Layer**: High-resolution HiRISE & CTX satellite mosaics ($0.25\text{ m/px}$) showing bedforms, dune fields, and impact scarps.
-2. ** Topographic & Hazard Layer**: MOLA & HRSC Digital Elevation Models (DEM) calculating slope gradient vectors. Highlights **impassable slopes $>15^\circ$** where pressurized spacesuit knee/ankle articulation limits cause severe fall hazards.
-3. ** Radiation & Space Weather Layer**: Ground-level radiation flux calibrated against Curiosity's **Radiation Assessment Detector (RAD)** ($0.23-0.25\text{ mSv/sol}$ baseline, with cosmic ray shielding from canyon walls and exposure on high ridge crests).
-4. ** Spectral & Mineralogy Layer**: Hyperspectral data from **CRISM (Compact Reconnaissance Imaging Spectrometer for Mars)** classifying carbonates (green), smectite clays/phyllosilicates (cyan), sulfates (gold), and crystalline hematite (purple).
-5. ** Atmospheric & Thermal Layer**: Surface meteorology and thermal inertia derived from **Perseverance MEDA** and **Curiosity REMS** (diurnal temperatures from $-78^\circ\text{C}$ to $-14^\circ\text{C}$, wind vectors, atmospheric pressure $746\text{ Pa}$, and dust optical depth $\tau = 0.44$).
+1. **Optical Imagery Layer**: High-resolution HiRISE & CTX satellite mosaics ($0.25\text{ m/px}$) showing bedforms, dune fields, and impact scarps.
+2. **Topographic & Hazard Layer**: MOLA & HRSC Digital Elevation Models (DEM) calculating slope gradient vectors. Highlights **impassable slopes $>15^\circ$** where pressurized spacesuit knee/ankle articulation limits cause severe fall hazards.
+3. **Radiation & Space Weather Layer**: Ground-level radiation flux calibrated against Curiosity's **Radiation Assessment Detector (RAD)** ($0.23-0.25\text{ mSv/sol}$ baseline, with cosmic ray shielding from canyon walls and exposure on high ridge crests).
+4. **Spectral & Mineralogy Layer**: Hyperspectral data from **CRISM (Compact Reconnaissance Imaging Spectrometer for Mars)** classifying carbonates (green), smectite clays/phyllosilicates (cyan), sulfates (gold), and crystalline hematite (purple).
+5. **Atmospheric & Thermal Layer**: Surface meteorology and thermal inertia derived from **Perseverance MEDA** and **Curiosity REMS** (diurnal temperatures from $-78^\circ\text{C}$ to $-14^\circ\text{C}$, wind vectors, atmospheric pressure $746\text{ Pa}$, and dust optical depth $\tau = 0.44$).
 
 ### 3. "Bio-Metabolic" A* Route Optimizer
 Rather than simply computing the shortest euclidean path, ARES-SURVIVOR calculates the **least-energy, least-risk traverse**:
