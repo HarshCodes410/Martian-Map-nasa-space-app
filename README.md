@@ -2,13 +2,7 @@
 ### Autonomous Route & Environmental Survival System for Martian EVA
 **NASA Space Apps Challenge — "Interplanetary Survival Guide: Martian Map"**
 
-[![NASA Space Apps](https://img.shields.io/badge/NASA_Space_Apps-Bhopal_Global-E03C31?style=for-the-badge&logo=nasa&logoColor=white)](https://www.spaceappschallenge.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Three.js](https://img.shields.io/badge/3D_Engine-Three.js_WebGL-black?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 
----
 
 ## 🌌 Executive Summary
 
