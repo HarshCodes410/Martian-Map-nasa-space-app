@@ -61,7 +61,7 @@ Directly addressing the NASA challenge prompt's highlighted objective:
 ### 5. Ground-Truth Mastcam-Z / Navcam Visual Reconnaissance
 - Every waypoint features ground-level photography captured by rover mast cameras, allowing astronauts to visually preview the terrain and landmarks before stepping out of the airlock.
 
-### 6. 🧠 Machine Learning & Neural Network Training Pipeline
+### 6.  Machine Learning & Neural Network Training Pipeline
 ARES-SURVIVOR incorporates real trained Machine Learning models:
 - **Model 1: Multi-Layer Perceptron (Deep Neural Network)**:
   - *Architecture*: 6 Input Features $\to$ 16 Hidden (ReLU) $\to$ 8 Hidden (ReLU) $\to$ 3 Output (Softmax).
@@ -73,9 +73,9 @@ ARES-SURVIVOR incorporates real trained Machine Learning models:
   - Scores geological drill core samples based on CRISM spectroscopy (phyllosilicates, carbonates, sulfates) and applies a **$1.35\times$ hydrothermal multiplier** for the 2025 Boxwork formations.
 - **Interactive Testbench**: An interactive testbench in the UI allows judges to drag input sliders and watch the neural network update its probability distribution in real time.
 
----
 
-## 🛠️ Technology Stack
+
+##  Technology Stack
 
 | Component | Technology | Rationale |
 | :--- | :--- | :--- |
@@ -86,7 +86,7 @@ ARES-SURVIVOR incorporates real trained Machine Learning models:
 | **Audio Synthesis** | **Web Audio API** | Real-time procedural Martian wind ambiance and tactical telemetry audio. |
 | **Icons** | **Lucide React** | Clean, standardized vector icons for aerospace displays. |
 
----
+
 
 ## 🧑‍🚀 Real NASA Datasets & Missions Integrated
 
@@ -104,70 +104,10 @@ ARES-SURVIVOR incorporates real trained Machine Learning models:
 4. **Mars Global Surveyor & Mars Express**:
    - *MOLA / HRSC*: Regional Digital Elevation Models (DEMs).
 
----
 
-## 💻 Local Development Setup
 
-To run this project locally on your machine:
 
-```bash
-# 1. Clone this repository
-git clone <your-github-repo-url>
-cd <repo-folder>
 
-# 2. Install dependencies
-npm install
 
-# 3. Start local development server
-npm run dev
-```
 
-Open your browser at `http://localhost:5173/` to view the platform.
 
-To create a production build:
-```bash
-npm run build
-```
-
----
-
-## 🚀 How to Deploy
-
-### Option 1: Vercel (Recommended — Instant 1-Click)
-1. Push your code to your GitHub repository.
-2. Go to [vercel.com](https://vercel.com) and log in with GitHub.
-3. Click **"Add New Project"** and select your repository.
-4. Click **"Deploy"** (Vercel automatically detects Vite + React).
-5. Done! Your live URL will be active immediately with global HTTPS.
-
-### Option 2: GitHub Pages
-This repository includes a ready-to-use GitHub Actions workflow (`.github/workflows/deploy.yml`):
-1. Push the code to GitHub:
-   ```bash
-   git branch -M main
-   git remote add origin https://github.com/<your-username>/<your-repo-name>.git
-   git push -u origin main
-   ```
-2. In your GitHub repository, go to **Settings** → **Pages**.
-3. Under **Build and deployment**, select **Source: GitHub Actions**.
-4. The deployment will run automatically and provide your live URL.
-
----
-
-## 🎤 3-Minute Hackathon Demo Pitch Script (For Judges in Bhopal)
-
-> *"Good morning respected judges. While robotic rovers have explored Mars for decades, sending human astronauts requires an entirely new paradigm of navigation. On Mars, walking an extra kilometer or ascending an incline steeper than 15 degrees can exhaust an astronaut’s oxygen reserves and lead to catastrophic suit tip-overs.*
->
-> *We built **ARES-SURVIVOR** — the first integrated tactical Martian EVA Operating System and Bio-Geological Navigator.*
->
-> *Notice three key highlights:*
-> 1. *First, our **Tri-Mode Architecture**: We seamlessly transition between the astronaut’s **First-Person Helmet Visor HUD** with real-time PLSS consumables and procedural acoustic Martian wind, the **Field Tablet** for glove-friendly 3D topographic mapping, and the **Habitat Operations Command Center** tracking MRO and MAVEN satellite relay windows.*
-> 2. *Second, our **Multi-Mission Scientific Data Fusion**: We integrate 5 real NASA mission layers—HiRISE optical, MOLA slope topography, Curiosity RAD radiation dosimeter readings, CRISM hyperspectral mineralogy, and Perseverance MEDA weather.*
-> 3. *Third, our **Bio-Metabolic A\* Pathfinding Engine**: Watch as I select a target destination like the 2025 Curiosity Boxwork Formations or Jezero Delta. The algorithm dynamically routes around soft sand dunes and slopes over 15 degrees, calculating exact oxygen burn in liters and battery draw in kilowatt-hours.*
->
-> *With ARES-SURVIVOR, astronauts don't just survive on Mars—they pioneer the future of interplanetary science. Thank you!"*
-
----
-
-## 📄 License
-This project is open-source under the [MIT License](LICENSE). Developed for the **NASA Space Apps Challenge**.
