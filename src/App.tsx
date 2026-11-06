@@ -1,363 +1,173 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Brain,
-  FileText,
-  Volume2,
-  VolumeX,
-} from 'lucide-react';
-import type {
-  LayerType,
-  OperationalMode,
-  RouteTraverse,
-  Waypoint,
-} from './types/mars';
-import { MISSION_SITES } from './data/marsDatasets';
-import {
-  calculateEVAPath,
-  generateTerrainGrid,
-  type TerrainCell,
-} from './utils/pathfinder';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Bell, Brain, Check, FileText, FlaskConical, Glasses, LayoutDashboard, MapPin, Moon, PanelLeftClose, PanelLeftOpen, Route, Satellite, Sun, Users, Volume2, VolumeX } from 'lucide-react';
+import type { LayerType, RouteTraverse, Waypoint } from './types/mars';
+import { MISSION_SITES, SATELLITE_PASS_SCHEDULE } from './data/marsDatasets';
+import { calculateEVAPath, generateTerrainGrid } from './utils/pathfinder';
 import { marsAudio } from './utils/audioSystem';
-import { VisorHUD } from './components/VisorHUD';
-import { TabletMode } from './components/TabletMode';
-import { CommandCenter } from './components/CommandCenter';
-import { MissionBriefModal } from './components/MissionBriefModal';
-import { AIDashboardModal } from './components/AIDashboardModal';
+import type { Ctx, PageId } from './pages/shared';
+import { CommandPalette, SearchBox, type CmdItem } from './pages/ui';
+import { Overview } from './pages/Overview';
+import { Planner } from './pages/Planner';
+import { Visor } from './pages/Visor';
+import { Science } from './pages/Science';
+import { CoPilot } from './pages/CoPilot';
+import { Crew } from './pages/Crew';
+import { FlightPlan } from './pages/FlightPlan';
+
+const NAV: { group: string; items: { id: PageId; label: string; sub: string; Icon: React.ElementType }[] }[] = [
+  { group: 'Operations', items: [
+    { id: 'overview', label: 'Overview', sub: 'Mission control at a glance', Icon: LayoutDashboard },
+    { id: 'planner', label: 'Route planner', sub: 'Layers, terrain and traverse design', Icon: Route },
+    { id: 'visor', label: 'Visor simulator', sub: 'First-person EVA heads-up display', Icon: Glasses },
+  ] },
+  { group: 'Intelligence', items: [
+    { id: 'science', label: 'Science & samples', sub: 'Targets, minerals and datasets', Icon: FlaskConical },
+    { id: 'ai', label: 'AI co-pilot', sub: 'Terrain hazard and biosignature models', Icon: Brain },
+  ] },
+  { group: 'Base', items: [
+    { id: 'crew', label: 'Crew & comms', sub: 'Habitat operations command', Icon: Users },
+    { id: 'plan', label: 'Flight plan', sub: 'Mission brief and export', Icon: FileText },
+  ] },
+];
 
 export const App: React.FC = () => {
   const [siteId, setSiteId] = useState<'jezero' | 'gale'>('jezero');
-  const [mode, setMode] = useState<OperationalMode>('tablet');
-  const [activeLayer, setActiveLayer] = useState<LayerType>('optical');
-  const [isMuted, setIsMuted] = useState(false);
-  const [isBriefOpen, setIsBriefOpen] = useState(false);
-  const [isAIOpen, setIsAIOpen] = useState(false);
+  const [page, setPage] = useState<PageId>('overview');
+  const [layer, setLayer] = useState<LayerType>('optical');
+  const [muted, setMuted] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [dark, setDark] = useState(false);
+  const [palette, setPalette] = useState(false);
+  const [bell, setBell] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
+  const toast = (msg: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((a) => [...a.slice(-2), { id, msg }]);
+    setTimeout(() => setToasts((a) => a.filter((x) => x.id !== id)), 3600);
+  };
 
   const site = MISSION_SITES[siteId];
+  const grid = useMemo(() => generateTerrainGrid(siteId), [siteId]);
+  const base = site.waypoints.find((w) => w.type === 'base') || site.waypoints[0];
+  const firstTarget = (s: typeof site) => s.waypoints.find((w) => w.type === 'science') || s.waypoints[1];
 
-  // Generate localized Martian DEM grid
-  const terrainGrid: TerrainCell[][] = useMemo(() => {
-    return generateTerrainGrid(siteId);
-  }, [siteId]);
+  const [selected, setSelected] = useState<Waypoint | null>(() => firstTarget(site));
+  const [target, setTarget] = useState(() => ({ x: firstTarget(site).coord.x, y: firstTarget(site).coord.y }));
 
-  // Selected waypoint
-  const [selectedWaypoint, setSelectedWaypoint] = useState<Waypoint | null>(() => {
-    // Default to the first science waypoint
-    return site.waypoints.find((wp) => wp.type === 'science') || site.waypoints[1];
-  });
+  const route: RouteTraverse = useMemo(
+    () => calculateEVAPath(grid, { x: base.coord.x, y: base.coord.y }, target, [base, selected].filter(Boolean) as Waypoint[], site.gridResolutionMeters),
+    [grid, base, target, selected, site.gridResolutionMeters],
+  );
 
-  // Target destination coordinate for pathfinding
-  const [targetCoord, setTargetCoord] = useState<{ x: number; y: number }>(() => {
-    const initialTarget = site.waypoints.find((wp) => wp.type === 'science') || site.waypoints[1];
-    return { x: initialTarget.coord.x, y: initialTarget.coord.y };
-  });
-
-  // Re-calculate route when site or target coordinate changes
-  const baseWaypoint = site.waypoints.find((wp) => wp.type === 'base') || site.waypoints[0];
-
-  const calculatedRoute: RouteTraverse = useMemo(() => {
-    return calculateEVAPath(
-      terrainGrid,
-      { x: baseWaypoint.coord.x, y: baseWaypoint.coord.y },
-      targetCoord,
-      [baseWaypoint, selectedWaypoint].filter(Boolean) as Waypoint[],
-      site.gridResolutionMeters
-    );
-  }, [terrainGrid, baseWaypoint, targetCoord, selectedWaypoint, site.gridResolutionMeters]);
-
-  // When site switches, update default target
-  const handleSelectSite = (newSiteId: 'jezero' | 'gale') => {
+  const chooseSite = (id: 'jezero' | 'gale') => {
     marsAudio.playClick();
-    setSiteId(newSiteId);
-    const newSite = MISSION_SITES[newSiteId];
-    const newTarget = newSite.waypoints.find((wp) => wp.type === 'science') || newSite.waypoints[1];
-    setSelectedWaypoint(newTarget);
-    setTargetCoord({ x: newTarget.coord.x, y: newTarget.coord.y });
+    setSiteId(id);
+    const t = firstTarget(MISSION_SITES[id]);
+    setSelected(t);
+    setTarget({ x: t.coord.x, y: t.coord.y });
+  };
+  const ctx: Ctx = {
+    site, grid, route, layer, setLayer, selected, base,
+    pickWaypoint: (w) => { marsAudio.playRadarPing(); setSelected(w); setTarget({ x: w.coord.x, y: w.coord.y }); },
+    mapClick: (c) => {
+      marsAudio.playClick(640);
+      setTarget(c);
+      setSelected(site.waypoints.find((w) => Math.hypot(w.coord.x - c.x, w.coord.y - c.y) < 8) || null);
+    },
+    toBase: () => { marsAudio.playClick(); setSelected(base); setTarget({ x: base.coord.x, y: base.coord.y }); },
+    emergency: () => { marsAudio.playHazardAlert(); setSelected(base); setTarget({ x: base.coord.x, y: base.coord.y }); },
+    go: (p) => { marsAudio.playClick(); setPage(p); },
   };
 
-  const handleSelectWaypoint = (wp: Waypoint) => {
-    marsAudio.playRadarPing();
-    setSelectedWaypoint(wp);
-    setTargetCoord({ x: wp.coord.x, y: wp.coord.y });
-  };
-
-  const handleMapClickToRoute = (coord: { x: number; y: number }) => {
-    marsAudio.playClick(640);
-    setTargetCoord(coord);
-    // Find closest waypoint or set custom
-    const closest = site.waypoints.find((w) => Math.hypot(w.coord.x - coord.x, w.coord.y - coord.y) < 8);
-    setSelectedWaypoint(closest || null);
-  };
-
-  const handleResetRouteToBase = () => {
-    marsAudio.playClick();
-    setTargetCoord({ x: baseWaypoint.coord.x, y: baseWaypoint.coord.y });
-    setSelectedWaypoint(baseWaypoint);
-  };
-
-  const handleEmergencyReturn = () => {
-    marsAudio.playHazardAlert();
-    setTargetCoord({ x: baseWaypoint.coord.x, y: baseWaypoint.coord.y });
-    setSelectedWaypoint(baseWaypoint);
-  };
-
-  const handleToggleAudio = () => {
-    marsAudio.startMarsWind();
-    const muted = marsAudio.toggleMute();
-    setIsMuted(muted);
-  };
-
-  // Start Mars audio on first user touch anywhere
   useEffect(() => {
-    const handleFirstGesture = () => {
-      marsAudio.startMarsWind();
-      window.removeEventListener('click', handleFirstGesture);
-      window.removeEventListener('keydown', handleFirstGesture);
-    };
-    window.addEventListener('click', handleFirstGesture);
-    window.addEventListener('keydown', handleFirstGesture);
-    return () => {
-      window.removeEventListener('click', handleFirstGesture);
-      window.removeEventListener('keydown', handleFirstGesture);
-    };
+    const start = () => { marsAudio.startMarsWind(); window.removeEventListener('click', start); };
+    window.addEventListener('click', start);
+    return () => window.removeEventListener('click', start);
   }, []);
 
+  useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; }, [dark]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((v) => !v); } };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    toast(`Route updated · ${route.totalDistanceKm.toFixed(2)} km · ${Math.round(route.estimatedDurationMins)} min`);
+  }, [route.totalDistanceKm, route.estimatedDurationMins]);
+
+  const alerts = [
+    ...site.waypoints.filter((w) => w.slopeRisk > 15).map((w) => ({ Icon: AlertTriangle, text: `${w.name}: slope ${w.slopeRisk}° exceeds the 15° suit limit` })),
+    ...SATELLITE_PASS_SCHEDULE.filter((s) => s.status !== 'Out of Range').map((s) => ({ Icon: Satellite, text: `${s.satelliteName.split(' (')[0]} ${s.status.toLowerCase()} · ${s.bandwidthMbps} Mbps` })),
+  ];
+  const items: CmdItem[] = [
+    ...NAV.flatMap((g) => g.items.map((i) => ({ group: 'Go to', label: i.label, hint: i.sub, Icon: i.Icon, run: () => ctx.go(i.id) }))),
+    ...site.waypoints.map((w) => ({ group: 'Waypoints', label: w.name, hint: w.title, Icon: MapPin, run: () => { ctx.pickWaypoint(w); setPage('planner'); } })),
+    { group: 'Landing site', label: 'Jezero Crater Delta', Icon: MapPin, run: () => chooseSite('jezero') },
+    { group: 'Landing site', label: 'Gale Crater · Boxwork', Icon: MapPin, run: () => chooseSite('gale') },
+    { group: 'Actions', label: 'Emergency return to base', Icon: AlertTriangle, run: ctx.emergency },
+    { group: 'Actions', label: dark ? 'Switch to light theme' : 'Switch to dark theme', Icon: dark ? Sun : Moon, run: () => setDark(!dark) },
+  ];
+
+  const current = NAV.flatMap((g) => g.items).find((i) => i.id === page)!;
+
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans-human selection:bg-orange-500 selection:text-white relative">
-      {/* Top Universal Aerospace Header */}
-      <header className="sticky top-0 z-40 bg-[#111827]/85 backdrop-blur-xl border-b border-white/10 px-4 py-2.5 shadow-xl">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          {/* Brand & Project Identity */}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 via-amber-500 to-cyan-500 flex items-center justify-center text-slate-950 font-black text-xs shadow-[0_0_16px_rgba(249,115,22,0.4)]">
-              🚀
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold tracking-wider text-white">ARES-SURVIVOR</span>
-                <span className="text-[10px] bg-orange-500/20 text-orange-300 px-2 py-0.5 rounded-full border border-orange-500/30 font-medium">
-                  NASA SPACE APPS
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400 font-sans-human">
-                Martian Tactical EVA Navigator & Planetary Survival Guide
-              </div>
-            </div>
-          </div>
-
-          {/* Operational Tri-Mode Switcher */}
-          <div className="bg-slate-900/90 p-1 rounded-xl border border-slate-700/60 flex items-center gap-1 shadow-inner font-mono-tactical">
-            <button
-              onClick={() => {
-                marsAudio.playClick();
-                setMode('hud');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                mode === 'hud'
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-[0_0_15px_rgba(249,115,22,0.5)]'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span className="text-sm">🪖</span>
-              <span>VISOR HUD</span>
-            </button>
-            <button
-              onClick={() => {
-                marsAudio.playClick();
-                setMode('tablet');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                mode === 'tablet'
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-[0_0_15px_rgba(249,115,22,0.5)]'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span className="text-sm">📟</span>
-              <span>EVA TABLET</span>
-            </button>
-            <button
-              onClick={() => {
-                marsAudio.playClick();
-                setMode('habitat');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                mode === 'habitat'
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-[0_0_15px_rgba(249,115,22,0.5)]'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span className="text-sm">🛰️</span>
-              <span>HABITAT OPS</span>
-            </button>
-          </div>
-
-          {/* Right Header Controls: Audio & Mission Brief Export */}
-          <div className="flex items-center gap-2 font-mono-tactical">
-            {/* Audio Toggle */}
-            <button
-              onClick={handleToggleAudio}
-              className={`p-2 rounded-xl border transition-all ${
-                isMuted
-                  ? 'bg-slate-900 border-slate-700 text-slate-500'
-                  : 'bg-orange-950/60 border-orange-500/40 text-orange-300 shadow-[0_0_12px_rgba(249,115,22,0.25)]'
-              }`}
-              title={isMuted ? 'Unmute Martian Wind Ambiance' : 'Mute Sound'}
-            >
-              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 animate-pulse" />}
-            </button>
-
-            {/* AI/ML Neural Co-Pilot Trigger */}
-            <button
-              onClick={() => {
-                marsAudio.playClick(1040);
-                setIsAIOpen(true);
-              }}
-              className="bg-purple-950/70 hover:bg-purple-900/90 text-purple-200 px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-all font-bold"
-            >
-              <Brain className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-              <span>AI CO-PILOT</span>
-            </button>
-
-            {/* Mission Briefing Modal Trigger */}
-            <button
-              onClick={() => {
-                marsAudio.playClick();
-                setIsBriefOpen(true);
-              }}
-              className="hud-glass hover:bg-slate-800 text-slate-200 px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-white/10 transition-colors"
-            >
-              <FileText className="w-3.5 h-3.5 text-cyan-400" />
-              <span>FLIGHT PLAN</span>
-            </button>
-
-            {/* Site Picker Pill */}
-            <div className="hidden sm:flex bg-slate-900 border border-slate-700/60 rounded-xl p-0.5 text-[11px]">
-              <button
-                onClick={() => handleSelectSite('jezero')}
-                className={`px-2.5 py-1 rounded-lg transition-colors font-bold ${
-                  siteId === 'jezero' ? 'bg-orange-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                JEZERO DELTA
+    <div className={`shell${collapsed ? ' collapsed' : ''}`}>
+      <aside className="side">
+        <button className="nav" aria-label="Collapse sidebar" title="Collapse sidebar" onClick={() => setCollapsed(!collapsed)} style={{ width: 'auto', alignSelf: collapsed ? 'center' : 'flex-end', padding: 8 }}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
+        <div className="brand"><i><Route size={20} color="#fff" /></i><span>ARES Navigator</span></div>
+        {NAV.map((g) => (
+          <React.Fragment key={g.group}>
+            <div className="grp">{g.group}</div>
+            {g.items.map(({ id, label, Icon }) => (
+              <button key={id} className="nav" aria-current={page === id ? 'page' : undefined} title={label} onClick={() => ctx.go(id)}>
+                <Icon size={19} aria-hidden /><span>{label}</span>
               </button>
-              <button
-                onClick={() => handleSelectSite('gale')}
-                className={`px-2.5 py-1 rounded-lg transition-colors font-bold ${
-                  siteId === 'gale' ? 'bg-orange-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                GALE (BOXWORK)
-              </button>
-            </div>
-          </div>
+            ))}
+          </React.Fragment>
+        ))}
+        <div className="sitebox">
+          <div className="grp" style={{ padding: '0 8px 6px' }}>Landing site</div>
+          <button aria-pressed={siteId === 'jezero'} onClick={() => chooseSite('jezero')}>Jezero Crater Delta</button>
+          <button aria-pressed={siteId === 'gale'} onClick={() => chooseSite('gale')}>Gale Crater · Boxwork</button>
         </div>
-      </header>
+      </aside>
 
-      {/* Human Explorer Context Banner */}
-      <div className="max-w-7xl w-full mx-auto px-4 md:px-6 pt-4 pb-1">
-        <div className="hud-glass p-3.5 md:p-4 rounded-2xl border border-white/10 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-orange-950/30">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-500 to-amber-300 p-0.5 shadow-[0_0_15px_rgba(249,115,22,0.4)]">
-                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-base">
-                  🧑‍🚀
-                </div>
-              </div>
-              <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-900" title="Vitals Nominal" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white tracking-wide">
-                  Commander Mark Watney • Expedition Lead
-                </span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30 font-medium">
-                  ● Life Support 100%
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-300 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>Sol {site.weather.sol} Martian Morning</span>
-                <span>•</span>
-                <span className="text-orange-300">Surface Temp: {site.weather.groundTempC}°C</span>
-                <span>•</span>
-                <span className="text-cyan-300">Target: {selectedWaypoint ? selectedWaypoint.name : 'Surface Recon'}</span>
-              </div>
-            </div>
+      <div style={{ minWidth: 0 }}>
+        <header className="top">
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <h1>{current.label}</h1>
+            <p>{current.sub} · {site.name}</p>
           </div>
-
-          {/* Quick Help Badges */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
-            <div className="bg-slate-800/80 hover:bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-white/5 flex items-center gap-1.5 transition-colors">
-              <span>🗺️ Click map to route</span>
-            </div>
-            <div className="bg-slate-800/80 hover:bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-white/5 flex items-center gap-1.5 transition-colors">
-              <span>⛰️ Slopes &gt;15° flagged</span>
-            </div>
-            <div className="bg-purple-950/60 text-purple-200 px-2.5 py-1 rounded-lg border border-purple-500/30 flex items-center gap-1.5">
-              <span>🧠 95.9% Neural Co-Pilot</span>
-            </div>
+          <SearchBox onClick={() => setPalette(true)} />
+          <span className="badge ok">● Systems nominal</span>
+          <span className="badge brand">Sol {site.weather.sol}</span>
+          <button className="btn round" aria-label="Toggle theme" title="Toggle theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
+          <button className="btn hex" aria-label="Toggle ambient audio" title="Ambient audio" onClick={() => { marsAudio.startMarsWind(); setMuted(marsAudio.toggleMute()); }}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
+          <div style={{ position: 'relative' }}>
+            <button className="btn round" style={{ borderRadius: 14, position: 'relative' }} aria-label="Alerts" onClick={() => setBell(!bell)}><Bell size={17} />{alerts.length > 0 && <span className="dotn" />}</button>
+            {bell && (
+              <div className="pop" onMouseLeave={() => setBell(false)}>
+                <h3 style={{ margin: '0 0 8px' }}>Alerts <small>{alerts.length} active</small></h3>
+                {alerts.map((a, n) => <div className="row" key={n}><span style={{ display: 'flex', gap: 10, alignItems: 'center', color: 'var(--ink)' }}><a.Icon size={16} color="var(--brand)" />{a.text}</span></div>)}
+              </div>
+            )}
           </div>
-        </div>
+          <button className="btn pri" onClick={() => ctx.go('plan')}><FileText size={16} />Flight plan</button>
+        </header>
+        <main className="page" key={page + siteId}>
+          {page === 'overview' && <Overview {...ctx} />}
+          {page === 'planner' && <Planner {...ctx} />}
+          {page === 'visor' && <Visor {...ctx} />}
+          {page === 'science' && <Science {...ctx} />}
+          {page === 'ai' && <CoPilot />}
+          {page === 'crew' && <Crew {...ctx} />}
+          {page === 'plan' && <FlightPlan {...ctx} />}
+        </main>
       </div>
-
-      {/* Main Workspace Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-4">
-        {mode === 'hud' && (
-          <VisorHUD
-            site={site}
-            route={calculatedRoute}
-            targetWaypoint={selectedWaypoint}
-            onEmergencyReturn={handleEmergencyReturn}
-            onSwitchMode={(newMode) => setMode(newMode)}
-          />
-        )}
-
-        {mode === 'tablet' && (
-          <TabletMode
-            site={site}
-            grid={terrainGrid}
-            route={calculatedRoute}
-            activeLayer={activeLayer}
-            onChangeLayer={setActiveLayer}
-            selectedWaypoint={selectedWaypoint}
-            onSelectWaypoint={handleSelectWaypoint}
-            onMapClickToRoute={handleMapClickToRoute}
-            onResetRouteToBase={handleResetRouteToBase}
-          />
-        )}
-
-        {mode === 'habitat' && (
-          <CommandCenter site={site} onSelectSite={handleSelectSite} />
-        )}
-      </main>
-
-      {/* Global Mission Briefing Modal */}
-      <MissionBriefModal
-        isOpen={isBriefOpen}
-        onClose={() => setIsBriefOpen(false)}
-        site={site}
-        route={calculatedRoute}
-        targetWaypoint={selectedWaypoint}
-      />
-
-      {/* AI / ML Neural Co-Pilot Dashboard Modal */}
-      <AIDashboardModal
-        isOpen={isAIOpen}
-        onClose={() => setIsAIOpen(false)}
-      />
-
-      {/* Humanized Aerospace Footer */}
-      <footer className="border-t border-slate-800/80 bg-[#0d121f]/90 px-4 py-4 text-xs text-slate-400 font-sans-human">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-            <span className="text-slate-300 font-medium">NASA Space Apps Challenge • Interplanetary Survival Guide: Martian Map</span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-400 text-[11px]">
-            <span>Missions: MRO HiRISE • Curiosity RAD • Perseverance MEDA</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-orange-400 font-mono-tactical">ARES-SURVIVOR v2.4</span>
-          </div>
-        </div>
-      </footer>
+      {palette && <CommandPalette items={items} onClose={() => setPalette(false)} />}
+      <div className="toasts">{toasts.map((x) => <div className="toast" key={x.id}><i><Check size={15} /></i>{x.msg}</div>)}</div>
     </div>
   );
 };
