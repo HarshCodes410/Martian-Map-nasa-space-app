@@ -25,7 +25,7 @@ export const Crew: React.FC<Ctx> = (c) => (
         <Vital icon={<Flame size={15} />} k="Metabolic rate" v="110 W" />
         <Vital icon={<Activity size={15} />} k="Hab O₂" v="21.2 kPa" />
         <Vital icon={<Zap size={15} />} k="Hab array" v="98% solar" />
-        <Row k="Role" v="Rover teleoperation" />
+        <Row k="Role" v={<button className="badge brand" style={{ cursor: 'pointer', border: 0 }} onClick={() => c.go('rover')}>Rover teleoperation ↗</button>} />
         <Row k="Status" v={<span className="badge ok">Systems nominal</span>} />
       </div>
       <div className="card"><h3>Surface meteorology <small>Sol {c.site.weather.sol}</small></h3><Weather c={c} /></div>

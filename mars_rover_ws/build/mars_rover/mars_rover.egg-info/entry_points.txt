@@ -1,0 +1,7 @@
+[console_scripts]
+cmd_vel_mux = mars_rover.cmd_vel_mux:main
+data_server = mars_rover.data_server:main
+generate_world = mars_rover.generate_world:main
+obstacle_avoider = mars_rover.obstacle_avoider:main
+set_mode = mars_rover.set_mode:main
+

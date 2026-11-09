@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { LayerType, MissionSite, RouteTraverse, Waypoint } from '../types/mars';
 import type { TerrainCell } from '../utils/pathfinder';
 
-export type PageId = 'overview' | 'planner' | 'visor' | 'science' | 'ai' | 'crew' | 'plan';
+export type PageId = 'overview' | 'planner' | 'visor' | 'rover' | 'science' | 'ai' | 'crew' | 'plan';
 
 export interface Ctx {
   site: MissionSite;

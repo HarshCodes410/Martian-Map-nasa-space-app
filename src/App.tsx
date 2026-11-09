@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, Brain, Check, FileText, FlaskConical, Glasses, LayoutDashboard, MapPin, Moon, PanelLeftClose, PanelLeftOpen, Route, Satellite, Sun, Users, Volume2, VolumeX } from 'lucide-react';
+import { AlertTriangle, Bell, Brain, Check, FileText, FlaskConical, Glasses, LayoutDashboard, MapPin, Moon, PanelLeftClose, PanelLeftOpen, Radio, Route, Satellite, Sun, Users, Volume2, VolumeX } from 'lucide-react';
 import type { LayerType, RouteTraverse, Waypoint } from './types/mars';
 import { MISSION_SITES, SATELLITE_PASS_SCHEDULE } from './data/marsDatasets';
 import { calculateEVAPath, generateTerrainGrid } from './utils/pathfinder';
@@ -9,6 +9,7 @@ import { CommandPalette, SearchBox, type CmdItem } from './pages/ui';
 import { Overview } from './pages/Overview';
 import { Planner } from './pages/Planner';
 import { Visor } from './pages/Visor';
+import { RoverTeleop } from './pages/RoverTeleop';
 import { Science } from './pages/Science';
 import { CoPilot } from './pages/CoPilot';
 import { Crew } from './pages/Crew';
@@ -19,6 +20,7 @@ const NAV: { group: string; items: { id: PageId; label: string; sub: string; Ico
     { id: 'overview', label: 'Overview', sub: 'Mission control at a glance', Icon: LayoutDashboard },
     { id: 'planner', label: 'Route planner', sub: 'Layers, terrain and traverse design', Icon: Route },
     { id: 'visor', label: 'Visor simulator', sub: 'First-person EVA heads-up display', Icon: Glasses },
+    { id: 'rover', label: 'Rover Teleop', sub: 'ROS 2 live telemetry & control', Icon: Radio },
   ] },
   { group: 'Intelligence', items: [
     { id: 'science', label: 'Science & samples', sub: 'Targets, minerals and datasets', Icon: FlaskConical },
@@ -141,6 +143,9 @@ export const App: React.FC = () => {
             <p>{current.sub} · {site.name}</p>
           </div>
           <SearchBox onClick={() => setPalette(true)} />
+          <button className={`badge ${page === 'rover' ? 'brand' : ''}`} style={{ cursor: 'pointer', border: '1px solid var(--line)' }} onClick={() => ctx.go('rover')}>
+            <Radio size={13} /> ROS 2 Teleop
+          </button>
           <span className="badge ok">● Systems nominal</span>
           <span className="badge brand">Sol {site.weather.sol}</span>
           <button className="btn round" aria-label="Toggle theme" title="Toggle theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
@@ -160,6 +165,7 @@ export const App: React.FC = () => {
           {page === 'overview' && <Overview {...ctx} />}
           {page === 'planner' && <Planner {...ctx} />}
           {page === 'visor' && <Visor {...ctx} />}
+          {page === 'rover' && <RoverTeleop {...ctx} />}
           {page === 'science' && <Science {...ctx} />}
           {page === 'ai' && <CoPilot />}
           {page === 'crew' && <Crew {...ctx} />}

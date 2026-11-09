@@ -1,5 +1,5 @@
 import React from 'react';
-import { Glasses, Map as MapIcon, Undo2 } from 'lucide-react';
+import { Glasses, Map as MapIcon, Radio, Undo2 } from 'lucide-react';
 import { TerrainMap2D } from '../components/TerrainMap2D';
 import { LayerSwitch, Passes, RouteKpis, Timeline, Weather, hazardText, hazardTone } from './parts';
 import { ElevationProfile, Ring } from './ui';
@@ -17,6 +17,7 @@ export const Overview: React.FC<Ctx> = (c) => {
           <div className="acts">
             <button className="btn pri" onClick={() => c.go('planner')}><MapIcon size={16} />Open route planner</button>
             <button className="btn" onClick={() => c.go('visor')}><Glasses size={16} />Visor view</button>
+            <button className="btn" onClick={() => c.go('rover')}><Radio size={16} />Rover Teleop</button>
             <button className="btn" onClick={c.toBase}><Undo2 size={16} />Return to base</button>
           </div>
         </div>

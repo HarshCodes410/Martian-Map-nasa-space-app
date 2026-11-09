@@ -73,6 +73,18 @@ ARES-SURVIVOR incorporates real trained Machine Learning models:
   - Scores geological drill core samples based on CRISM spectroscopy (phyllosilicates, carbonates, sulfates) and applies a **$1.35\times$ hydrothermal multiplier** for the 2025 Boxwork formations.
 - **Interactive Testbench**: An interactive testbench in the UI allows judges to drag input sliders and watch the neural network update its probability distribution in real time.
 
+### 7. 🤖 Real-Time ROS 2 & Gazebo Simulation Integration (`mars_rover_ws`)
+ARES-SURVIVOR includes a complete ROS 2 (Humble) robotic navigation and telemetry workspace:
+- **ROS 2 Package (`mars_rover`)**:
+  - `mars_rover.launch.py`: Starts Gazebo Fortress with realistic Martian gravity (3.71 m/s²) and rugged crater terrain (`mars_world.sdf`), sensor fusion EKF (`robot_localization`), SLAM toolbox (`slam_toolbox`), autonomous obstacle avoidance (`obstacle_avoider.py`), velocity mux (`cmd_vel_mux.py`), and HTTP/JSON data server (`data_server.py`).
+  - **Sensors Integrated**: 360° 2D LiDAR (`/scan`), IMU 6-DOF (`/imu/data`), Wheel Odometry (`/odom`), Fused EKF Pose (`/odometry/filtered`), and Forward NavCam (`/camera/image_raw`).
+- **Web Teleoperation Dashboard (`src/pages/RoverTeleop.tsx`)**:
+  - Live 360° LiDAR Top-Down Radar canvas visualization (color-coded danger zones: < 1.0m red, < 2.2m amber, >= 2.2m teal).
+  - Live NavCam image stream (`/camera.png`) and real-time SLAM Occupancy Grid (`/map.png`).
+  - Bidirectional teleoperation: AUTO, MANUAL, and EMERGENCY STOP modes with WASD / Arrow key driving and touchscreen D-Pad.
+  - Interactive testbench includes a built-in simulation fallback mode so judges can experience the live telemetry even without running Gazebo locally.
+  - Standalone dashboard view accessible directly at `/personal_dashboard.html`.
+
 
 
 ##  Technology Stack
