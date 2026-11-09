@@ -11,6 +11,7 @@ import {
   ArrowUpLeft,
   ArrowUpRight,
   Bot,
+  Box,
   Camera,
   Compass,
   Cpu,
@@ -19,6 +20,7 @@ import {
   HelpCircle,
   MapPin,
   Play,
+  Radio,
   RefreshCw,
   Sliders,
   Square,
@@ -27,6 +29,7 @@ import {
 } from 'lucide-react';
 import type { Ctx } from './shared';
 import { Kpi, Row } from './shared';
+import { RoverDigitalTwin3D } from '../components/RoverDigitalTwin3D';
 
 interface TelemetryData {
   drive_mode?: 'auto' | 'manual' | 'stop' | string;
@@ -98,6 +101,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
   const [connected, setConnected] = useState(true);
   const [simulated, setSimulated] = useState(true);
   const [mode, setMode] = useState<'auto' | 'manual' | 'stop'>('auto');
+  const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
   const [speed, setSpeed] = useState(0.3);
   const [turn, setTurn] = useState(0.8);
   const [statusMsg, setStatusMsg] = useState('');
@@ -616,31 +620,61 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       <div className="g2">
         {/* Left column: Radar & Video Feeds */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* 360 LiDAR Radar */}
+          {/* 3D Digital Twin / 360 LiDAR Radar */}
           <div className="card">
             <h3>
-              360° LiDAR Top-Down Radar
-              <small>Forward is UP &middot; Range 12m</small>
+              <span>{viewMode === '3d' ? 'Interactive 3D Rover Digital Twin' : '360° LiDAR Top-Down Radar'}</span>
+              <div className="seg">
+                <button
+                  aria-pressed={viewMode === '3d'}
+                  onClick={() => setViewMode('3d')}
+                  title="3D WebGL Digital Twin"
+                >
+                  <Box size={14} /> 3D Digital Twin
+                </button>
+                <button
+                  aria-pressed={viewMode === '2d'}
+                  onClick={() => setViewMode('2d')}
+                  title="2D LiDAR Radar"
+                >
+                  <Radio size={14} /> 2D Radar
+                </button>
+              </div>
             </h3>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
-              <canvas
-                ref={radarCanvasRef}
-                width={360}
-                height={360}
-                style={{ borderRadius: 16, maxWidth: '100%', boxShadow: '0 8px 24px rgba(0,0,0,0.18)' }}
+
+            {viewMode === '3d' ? (
+              <RoverDigitalTwin3D
+                pitchDeg={data.imu?.pitch_deg ?? 0}
+                rollDeg={data.imu?.roll_deg ?? 0}
+                yawDeg={data.imu?.yaw_deg ?? 0}
+                linearSpeed={data.fused_odom?.linear_speed ?? (mode === 'auto' ? 0.28 : 0)}
+                angularSpeed={data.fused_odom?.angular_speed ?? 0}
+                scanRanges={data.scan?.ranges}
+                driveMode={mode}
               />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: 12 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ee4b5b' }} /> &lt; 1.0m (Danger)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f5a524' }} /> &lt; 2.2m (Caution)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#10b5a5' }} /> &ge; 2.2m (Clear)
-              </span>
-            </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+                  <canvas
+                    ref={radarCanvasRef}
+                    width={360}
+                    height={360}
+                    style={{ borderRadius: 16, maxWidth: '100%', boxShadow: '0 8px 24px rgba(0,0,0,0.18)' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: 12 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ee4b5b' }} /> &lt; 1.0m (Danger)
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f5a524' }} /> &lt; 2.2m (Caution)
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#10b5a5' }} /> &ge; 2.2m (Clear)
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Live Camera & SLAM Map Grid */}
