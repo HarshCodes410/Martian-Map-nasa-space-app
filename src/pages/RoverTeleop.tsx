@@ -95,9 +95,9 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
     }
   });
 
-  const [connected, setConnected] = useState(false);
-  const [simulated, setSimulated] = useState(false);
-  const [mode, setMode] = useState<'auto' | 'manual' | 'stop'>('stop');
+  const [connected, setConnected] = useState(true);
+  const [simulated, setSimulated] = useState(true);
+  const [mode, setMode] = useState<'auto' | 'manual' | 'stop'>('auto');
   const [speed, setSpeed] = useState(0.3);
   const [turn, setTurn] = useState(0.8);
   const [statusMsg, setStatusMsg] = useState('');
@@ -129,8 +129,8 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
 
   // Switch Mode API
   const handleSetMode = useCallback((newMode: 'auto' | 'manual' | 'stop') => {
+    setMode(newMode);
     if (simulated) {
-      setMode(newMode);
       flash(`[SIM] Rover switched to ${newMode.toUpperCase()}`);
       return;
     }
@@ -140,7 +140,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
           flash('Server control disabled (read-only mode active on rover)');
           return;
         }
-        setMode(newMode);
         flash(`Drive mode changed to ${newMode.toUpperCase()}`);
       })
       .catch(() => {
@@ -240,7 +239,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
   useEffect(() => {
     let active = true;
     const poll = async () => {
-      if (simulated) return;
       try {
         const res = await fetch(`${serverUrl}/api/all?full=1`, { mode: 'cors' });
         if (!res.ok) throw new Error('Bad response');
@@ -248,16 +246,19 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         if (!active) return;
         setData(json);
         setConnected(true);
+        setSimulated(false); // Real ROS detected
         if (json.drive_mode && ['auto', 'manual', 'stop'].includes(json.drive_mode)) {
           setMode(json.drive_mode as 'auto' | 'manual' | 'stop');
         }
       } catch {
         if (!active) return;
-        setConnected(false);
+        if (!simulated) {
+          setConnected(false);
+        }
       }
     };
 
-    const dataTimer = setInterval(poll, 450);
+    const dataTimer = setInterval(poll, simulated ? 2500 : 450);
     const imgTimer = setInterval(() => {
       if (!simulated && connected) {
         const now = Date.now();
@@ -287,11 +288,15 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         fakeRanges.push(Math.max(0.6, Math.min(12.0, dist)));
       }
       const minRange = Math.min(...fakeRanges);
+      const isAuto = mode === 'auto';
+      const isStop = mode === 'stop';
+      const currentSpeed = isStop ? 0.0 : (isAuto ? 0.28 : speed);
+
       setData({
         drive_mode: mode,
         obstacle: {
-          state: minRange < 1.2 ? 'AVOID' : minRange < 2.5 ? 'CAUTION' : 'CRUISE',
-          closest_dist: minRange,
+          state: isStop ? 'STOPPED' : (minRange < 1.2 ? 'AVOID' : minRange < 2.5 ? 'CAUTION' : 'CRUISE'),
+          closest_dist: isStop ? 0.0 : minRange,
           front_dist: fakeRanges[0],
           left_dist: fakeRanges[90],
           right_dist: fakeRanges[270],
@@ -312,7 +317,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
           yaw_deg: (t * 8) % 360,
           gyro_x: 0.01,
           gyro_y: 0.02,
-          gyro_z: 0.05,
+          gyro_z: isStop ? 0.0 : 0.05,
           accel_x: 0.12,
           accel_y: -0.08,
           accel_z: 3.71,
@@ -321,19 +326,19 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
           x: 14.2 + Math.cos(t * 0.1) * 6,
           y: -8.7 + Math.sin(t * 0.1) * 6,
           yaw_deg: (t * 8) % 360,
-          linear_speed: mode === 'stop' ? 0.0 : speed,
-          angular_speed: mode === 'stop' ? 0.0 : 0.05,
+          linear_speed: currentSpeed,
+          angular_speed: isStop ? 0.0 : 0.05,
         },
         odom: {
           x: 14.1 + Math.cos(t * 0.1) * 6,
           y: -8.8 + Math.sin(t * 0.1) * 6,
           yaw_deg: (t * 8) % 360,
-          linear_speed: mode === 'stop' ? 0.0 : speed,
-          angular_speed: mode === 'stop' ? 0.0 : 0.05,
+          linear_speed: currentSpeed,
+          angular_speed: isStop ? 0.0 : 0.05,
         },
         cmd_vel: {
-          linear_x: mode === 'stop' ? 0.0 : speed,
-          angular_z: 0.0,
+          linear_x: currentSpeed,
+          angular_z: isStop ? 0.0 : 0.0,
         },
         map: {
           width: 240,
@@ -351,7 +356,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         },
       });
       setConnected(true);
-    }, 500);
+    }, 450);
 
     return () => clearInterval(simTimer);
   }, [simulated, mode, speed]);
@@ -441,7 +446,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       <section className="hero">
         <div style={{ position: 'relative', zIndex: 1 }}>
           <span className="eyebrow">
-            ROS 2 Teleoperation &middot; {connected ? (simulated ? 'Simulation Active' : 'ROS 2 Humble Connected') : 'Awaiting Bridge'}
+            ROS 2 Teleoperation &middot; {connected ? (simulated ? 'Simulated Telemetry (Live)' : 'ROS 2 Humble Connected') : 'Awaiting Bridge'}
           </span>
           <h2>ARES Mars Rover &middot; Live Telemetry</h2>
           <p>
@@ -486,7 +491,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             <span>Drive mode</span>
           </div>
           <div className="ring" style={{ ['--c' as string]: 'var(--teal)', ['--v' as string]: connected ? 100 : 0 }}>
-            <div className="dial"><b>{connected ? 'LIVE' : 'OFF'}</b></div>
+            <div className="dial"><b>{connected ? (simulated ? 'SIM' : 'LIVE') : 'OFF'}</b></div>
             <span>ROS 2 Link</span>
           </div>
           <div className="ring" style={{ ['--c' as string]: 'var(--amber)', ['--v' as string]: Math.min(100, Math.round((data.map?.explored_area_m2 ?? 60) / 2)) }}>
