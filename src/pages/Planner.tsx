@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { AlertTriangle, Box, Map as MapIcon } from 'lucide-react';
 import { Terrain3D } from '../components/Terrain3D';
 import { TerrainMap2D } from '../components/TerrainMap2D';
-import { LAYERS, Row, TYPE_LABEL, type Ctx } from './shared';
+import { Row, type Ctx } from './shared';
+import { LAYERS, TYPE_LABEL } from './missionHelpers';
 import { RouteKpis, WaypointTable } from './parts';
 
 export const Planner: React.FC<Ctx> = (c) => {

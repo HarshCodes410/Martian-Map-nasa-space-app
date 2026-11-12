@@ -1,12 +1,17 @@
 import React from 'react';
 import { Glasses, Map as MapIcon, Radio, Undo2 } from 'lucide-react';
 import { TerrainMap2D } from '../components/TerrainMap2D';
-import { LayerSwitch, Passes, RouteKpis, Timeline, Weather, hazardText, hazardTone } from './parts';
+import { LayerSwitch, Passes, RouteKpis, Timeline, Weather } from './parts';
 import { ElevationProfile, Ring } from './ui';
-import { Row, TYPE_LABEL, slopeTone, type Ctx } from './shared';
+import { Row, type Ctx } from './shared';
+import { TYPE_LABEL, hazardText, hazardTone, slopeTone } from './missionHelpers';
 
 export const Overview: React.FC<Ctx> = (c) => {
   const t = c.selected;
+  // Suit starts with 600 L O2 and 2.5 kWh PLSS battery; compute remaining reserve after traverse
+  const o2ReservePct = Math.max(0, Math.min(100, Math.round(((600 - c.route.estimatedOxygenUsedL) / 600) * 100)));
+  const batteryReservePct = Math.max(0, Math.min(100, Math.round(((2.5 - c.route.estimatedEnergyUsedKwh) / 2.5) * 100)));
+
   return (
     <>
       <section className="hero">
@@ -23,8 +28,8 @@ export const Overview: React.FC<Ctx> = (c) => {
         </div>
         <div className="rings">
           <Ring value={c.route.hazardScore} label="Hazard score" color="#ffa24d" suffix="" />
-          <Ring value={88} label="O₂ reserve" color="#4ff0c0" />
-          <Ring value={82} label="PLSS battery" color="#9a8cff" />
+          <Ring value={o2ReservePct} label="O₂ post-EVA" color="#4ff0c0" />
+          <Ring value={batteryReservePct} label="PLSS post-EVA" color="#9a8cff" />
         </div>
       </section>
 

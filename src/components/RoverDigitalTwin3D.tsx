@@ -11,6 +11,11 @@ interface RoverDigitalTwinProps {
   driveMode?: string;
 }
 
+function lerpAngleShortest(current: number, target: number, alpha: number): number {
+  const diff = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + diff * alpha;
+}
+
 export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
   pitchDeg = 0,
   rollDeg = 0,
@@ -26,6 +31,7 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
   const cameraAngleRef = useRef({ rotX: 0.45, rotY: 0.65, dist: 11 });
 
   // References for animation
+  const roverMasterRef = useRef<THREE.Group | null>(null);
   const chassisRef = useRef<THREE.Group | null>(null);
   const wheelsRef = useRef<THREE.Mesh[]>([]);
   const lidarPuckRef = useRef<THREE.Mesh | null>(null);
@@ -38,7 +44,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     motionRef.current = { linearSpeed, angularSpeed, driveMode };
   }, [linearSpeed, angularSpeed, driveMode]);
 
-  // Update target rotations when props change
   useEffect(() => {
     targetRotRef.current = {
       pitch: THREE.MathUtils.degToRad(pitchDeg),
@@ -60,18 +65,17 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       if (i < n && scanRanges[i] != null && Number.isFinite(scanRanges[i])) {
         const r = Math.max(0.5, Math.min(12.0, scanRanges[i]!));
         const ang = -Math.PI + (i * 2 * Math.PI) / n;
-        // Project onto XZ plane
-        positions[idx] = -r * Math.sin(ang);
+        // Project onto XZ plane in rover frame (+Z forward, +X left)
+        positions[idx] = r * Math.sin(ang);
         positions[idx + 1] = 0.12;
-        positions[idx + 2] = -r * Math.cos(ang);
+        positions[idx + 2] = r * Math.cos(ang);
 
-        // Color by proximity
         if (r < 1.2) {
-          colors[idx] = 0.93; colors[idx + 1] = 0.29; colors[idx + 2] = 0.35; // Red
+          colors[idx] = 0.93; colors[idx + 1] = 0.29; colors[idx + 2] = 0.35;
         } else if (r < 2.5) {
-          colors[idx] = 0.96; colors[idx + 1] = 0.65; colors[idx + 2] = 0.14; // Amber
+          colors[idx] = 0.96; colors[idx + 1] = 0.65; colors[idx + 2] = 0.14;
         } else {
-          colors[idx] = 0.06; colors[idx + 1] = 0.71; colors[idx + 2] = 0.65; // Teal
+          colors[idx] = 0.06; colors[idx + 1] = 0.71; colors[idx + 2] = 0.65;
         }
       } else {
         positions[idx] = 0;
@@ -84,10 +88,10 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
   }, [scanRanges]);
 
   useEffect(() => {
-    if (!mountRef.current) return;
     const container = mountRef.current;
-    const width = container.clientWidth;
-    const height = container.clientHeight || 420;
+    if (!container) return;
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight || 420);
 
     // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
@@ -102,7 +106,7 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    // 2. Lighting (Golden Mars Sun + Soft Sky Backlight)
+    // 2. Lighting
     const sunLight = new THREE.DirectionalLight(0xffa266, 2.4);
     sunLight.position.set(12, 18, 10);
     sunLight.castShadow = true;
@@ -120,7 +124,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
 
     // 3. Martian Ground Terrain
     const terrainGeo = new THREE.PlaneGeometry(28, 28, 32, 32);
-    // Subtle procedural bumpiness
     const pos = terrainGeo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const vx = pos.getX(i);
@@ -142,16 +145,16 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     terrain.receiveShadow = true;
     scene.add(terrain);
 
-    // Circular Range Grid on Ground
     const gridHelper = new THREE.PolarGridHelper(12, 6, 8, 32, 0xff5a36, 0x4a3040);
     gridHelper.position.y = 0.02;
     scene.add(gridHelper);
 
-    // Scatter small Martian Rocks
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a261a, roughness: 0.95 });
+    const rockGeos: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 18; i++) {
       const rockRadius = 0.12 + Math.random() * 0.35;
       const rockGeo = new THREE.DodecahedronGeometry(rockRadius, 1);
+      rockGeos.push(rockGeo);
       const rock = new THREE.Mesh(rockGeo, rockMat);
       const angle = Math.random() * Math.PI * 2;
       const dist = 2.5 + Math.random() * 8.0;
@@ -164,14 +167,14 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
 
     // 4. Mars Rover Digital Twin Hierarchy
     const roverMaster = new THREE.Group();
+    roverMasterRef.current = roverMaster;
     scene.add(roverMaster);
 
     const chassis = new THREE.Group();
     chassisRef.current = chassis;
-    chassis.position.y = 0.85; // Height off ground
+    chassis.position.y = 0.85;
     roverMaster.add(chassis);
 
-    // Rover Main Body (Foil / White Gold Aerospace Composite)
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0xdfd8c8,
       metalness: 0.4,
@@ -183,7 +186,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     body.receiveShadow = true;
     chassis.add(body);
 
-    // Solar Deck / RTG Cover
     const deckMat = new THREE.MeshStandardMaterial({
       color: 0x162438,
       roughness: 0.2,
@@ -195,7 +197,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     deck.castShadow = true;
     chassis.add(deck);
 
-    // NASA Gold Foil Accent
     const foilMat = new THREE.MeshStandardMaterial({
       color: 0xd4a017,
       metalness: 0.85,
@@ -207,7 +208,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     foil.castShadow = true;
     chassis.add(foil);
 
-    // Camera Mast
     const mastMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.8, roughness: 0.2 });
     const mastGeo = new THREE.CylinderGeometry(0.04, 0.05, 1.2, 12);
     const mast = new THREE.Mesh(mastGeo, mastMat);
@@ -215,14 +215,12 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     mast.castShadow = true;
     chassis.add(mast);
 
-    // Mast Head (NavCam / Mastcam)
     const headGeo = new THREE.BoxGeometry(0.35, 0.2, 0.22);
     const head = new THREE.Mesh(headGeo, mastMat);
     head.position.set(0.45, 1.5, 0.8);
     head.castShadow = true;
     chassis.add(head);
 
-    // Stereo Lenses
     const lensMat = new THREE.MeshStandardMaterial({ color: 0x10b5a5, metalness: 0.9, roughness: 0.1 });
     const lensGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.08, 12);
     for (const lx of [0.38, 0.52]) {
@@ -232,7 +230,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       chassis.add(lens);
     }
 
-    // High Gain Antenna Dish
     const dishMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.3, roughness: 0.4 });
     const dishGeo = new THREE.CylinderGeometry(0.32, 0.05, 0.1, 16);
     const dish = new THREE.Mesh(dishGeo, dishMat);
@@ -241,7 +238,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     dish.castShadow = true;
     chassis.add(dish);
 
-    // LiDAR Puck (Spinning Sensor)
     const lidarMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.1 });
     const lidarGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.18, 16);
     const lidarPuck = new THREE.Mesh(lidarGeo, lidarMat);
@@ -249,13 +245,11 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     chassis.add(lidarPuck);
     lidarPuckRef.current = lidarPuck;
 
-    // Glowing Laser Ring on Puck
     const ringMat = new THREE.MeshBasicMaterial({ color: 0x10b5a5 });
     const ringGeo = new THREE.CylinderGeometry(0.145, 0.145, 0.04, 16);
     const ring = new THREE.Mesh(ringGeo, ringMat);
     lidarPuck.add(ring);
 
-    // 6 Rocker-Bogie Rover Wheels
     const wheels: THREE.Mesh[] = [];
     const wheelMat = new THREE.MeshStandardMaterial({
       color: 0x22242a,
@@ -266,15 +260,16 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     wheelGeo.rotateZ(Math.PI / 2);
 
     const wheelPositions = [
-      [-1.05, -0.48, 0.9],   // Front Left
-      [1.05, -0.48, 0.9],    // Front Right
-      [-1.15, -0.48, 0.0],   // Middle Left
-      [1.15, -0.48, 0.0],    // Middle Right
-      [-1.05, -0.48, -0.9],  // Rear Left
-      [1.05, -0.48, -0.9],   // Rear Right
+      [-1.05, -0.48, 0.9],
+      [1.05, -0.48, 0.9],
+      [-1.15, -0.48, 0.0],
+      [1.15, -0.48, 0.0],
+      [-1.05, -0.48, -0.9],
+      [1.05, -0.48, -0.9],
     ];
 
     const bogieMat = new THREE.MeshStandardMaterial({ color: 0x444852, metalness: 0.7, roughness: 0.3 });
+    const strutGeos: THREE.BufferGeometry[] = [];
     wheelPositions.forEach(([x, y, z]) => {
       const wheel = new THREE.Mesh(wheelGeo, wheelMat);
       wheel.position.set(x, y, z);
@@ -282,8 +277,8 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       chassis.add(wheel);
       wheels.push(wheel);
 
-      // Suspension strut connecting to chassis
       const strutGeo = new THREE.CylinderGeometry(0.03, 0.03, Math.abs(x) * 0.4 + 0.3, 8);
+      strutGeos.push(strutGeo);
       const strut = new THREE.Mesh(strutGeo, bogieMat);
       strut.position.set(x * 0.65, y * 0.5, z);
       strut.rotation.z = x > 0 ? -0.4 : 0.4;
@@ -291,12 +286,12 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
     });
     wheelsRef.current = wheels;
 
-    // 5. Laser Ray / Beam
+    // 5. Laser Ray / Beam attached to chassis LiDAR puck so it pitches/rolls with the rover
     const laserMat = new THREE.LineBasicMaterial({ color: 0x10b5a5, transparent: true, opacity: 0.65 });
-    const laserPoints = [new THREE.Vector3(0, 1.3, 0.5), new THREE.Vector3(0, 0.1, 4.5)];
+    const laserPoints = [new THREE.Vector3(0, 0.45, 0.5), new THREE.Vector3(0, -0.7, 4.5)];
     const laserGeo = new THREE.BufferGeometry().setFromPoints(laserPoints);
     const laserBeam = new THREE.Line(laserGeo, laserMat);
-    scene.add(laserBeam);
+    chassis.add(laserBeam);
     laserBeamRef.current = laserBeam;
 
     // 6. 3D LiDAR Laser Point Cloud (360 points)
@@ -328,7 +323,7 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       opacity: 0.9,
     });
     const laserPointCloud = new THREE.Points(pcGeo, pcMat);
-    scene.add(laserPointCloud);
+    roverMaster.add(laserPointCloud);
     laserPointsRef.current = laserPointCloud;
 
     // 7. Mouse Orbit & Zoom Controls
@@ -355,7 +350,6 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       cameraAngleRef.current.dist = Math.max(4.5, Math.min(22, cameraAngleRef.current.dist + e.deltaY * 0.01));
     };
 
-    // Touch support for mobile / tablets
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         isDraggingRef.current = true;
@@ -392,56 +386,51 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       animId = requestAnimationFrame(animate);
       clockTime += 0.016;
 
-      // Camera Orbit position
       const { rotX, rotY, dist } = cameraAngleRef.current;
       camera.position.x = Math.sin(rotX) * Math.cos(rotY) * dist;
       camera.position.y = Math.sin(rotY) * dist + 0.5;
       camera.position.z = Math.cos(rotX) * Math.cos(rotY) * dist;
       camera.lookAt(0, 0.8, 0);
 
-      // Smoothly interpolate chassis pitch and roll from IMU telemetry
+      if (roverMasterRef.current) {
+        roverMasterRef.current.rotation.y = lerpAngleShortest(
+          roverMasterRef.current.rotation.y,
+          targetRotRef.current.yaw,
+          0.12,
+        );
+      }
+
       if (chassisRef.current) {
         chassisRef.current.rotation.x = THREE.MathUtils.lerp(
           chassisRef.current.rotation.x,
           targetRotRef.current.pitch,
-          0.08
+          0.1,
         );
         chassisRef.current.rotation.z = THREE.MathUtils.lerp(
           chassisRef.current.rotation.z,
           targetRotRef.current.roll,
-          0.08
-        );
-        chassisRef.current.rotation.y = THREE.MathUtils.lerp(
-          chassisRef.current.rotation.y,
-          targetRotRef.current.yaw,
-          0.08
+          0.1,
         );
       }
 
-      // Rotate wheels if moving
-      const { linearSpeed: lSpd, angularSpeed: aSpd, driveMode: dMode } = motionRef.current;
-      const isMoving = Math.abs(lSpd) > 0.02 || dMode === 'auto';
-      if (isMoving && wheelsRef.current.length > 0) {
-        const rollDelta = (lSpd || 0.25) * 0.15;
+      const { linearSpeed: lSpd, driveMode: dMode } = motionRef.current;
+      const isStopped = dMode === 'stop';
+      if (!isStopped && Math.abs(lSpd) > 0.01 && wheelsRef.current.length > 0) {
+        const rollDelta = lSpd * 0.18;
         wheelsRef.current.forEach((w) => {
           w.rotation.x += rollDelta;
         });
       }
-      if (Math.abs(aSpd) > 0.01 && chassisRef.current) {
-        chassisRef.current.rotation.y += aSpd * 0.01;
-      }
 
-      // Spin LiDAR Sensor on mast
       if (lidarPuckRef.current) {
         lidarPuckRef.current.rotation.y += 0.12;
       }
 
-      // Animate Laser Ray sweep
       if (laserBeamRef.current) {
         const beamPos = laserBeamRef.current.geometry.attributes.position as THREE.BufferAttribute;
         const sweepAngle = clockTime * 6;
         const r = 5.2;
-        beamPos.setXYZ(1, Math.sin(sweepAngle) * r, 0.12, Math.cos(sweepAngle) * r);
+        beamPos.setXYZ(1, Math.sin(sweepAngle) * r, -0.73, 0.5 + Math.cos(sweepAngle) * r);
         beamPos.needsUpdate = true;
       }
 
@@ -450,19 +439,22 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
 
     animate();
 
-    // 9. Resize Listener
+    // 9. Resize Listener + ResizeObserver
     const onResize = () => {
-      if (!mountRef.current) return;
-      const newW = mountRef.current.clientWidth;
-      const newH = mountRef.current.clientHeight || 420;
+      if (!container) return;
+      const newW = Math.max(1, container.clientWidth);
+      const newH = Math.max(1, container.clientHeight || 420);
       camera.aspect = newW / newH;
       camera.updateProjectionMatrix();
       renderer.setSize(newW, newH);
     };
     window.addEventListener('resize', onResize);
+    const resizeObserver = new ResizeObserver(onResize);
+    resizeObserver.observe(container);
 
     return () => {
       cancelAnimationFrame(animId);
+      resizeObserver.disconnect();
       container.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
@@ -471,17 +463,20 @@ export const RoverDigitalTwin3D: React.FC<RoverDigitalTwinProps> = ({
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
       window.removeEventListener('resize', onResize);
+
+      [terrainGeo, bodyGeo, deckGeo, foilGeo, mastGeo, headGeo, lensGeo, dishGeo, lidarGeo, ringGeo, wheelGeo, laserGeo, pcGeo, ...rockGeos, ...strutGeos].forEach((g) => g.dispose());
+      [terrainMat, rockMat, bodyMat, deckMat, foilMat, mastMat, lensMat, dishMat, lidarMat, ringMat, wheelMat, bogieMat, laserMat, pcMat].forEach((m) => m.dispose());
+
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
-  }, []); // Run once on mount
+  }, []);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: 440, borderRadius: 16, overflow: 'hidden' }}>
       <div ref={mountRef} style={{ width: '100%', height: '100%', cursor: 'grab' }} />
-      {/* 3D HUD overlay badges */}
       <div
         style={{
           position: 'absolute',

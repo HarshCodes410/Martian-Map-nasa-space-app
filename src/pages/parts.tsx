@@ -1,7 +1,8 @@
 import React from 'react';
 import { Activity, Clock, Mountain, Route, Wind, Zap } from 'lucide-react';
 import { SATELLITE_PASS_SCHEDULE } from '../data/marsDatasets';
-import { Kpi, LAYERS, Row, TYPE_LABEL, hazardText, hazardTone, slopeTone, type Ctx } from './shared';
+import { Kpi, Row, type Ctx } from './shared';
+import { LAYERS, TYPE_LABEL, slopeTone } from './missionHelpers';
 
 export const RouteKpis: React.FC<{ c: Ctx }> = ({ c }) => {
   const r = c.route;
@@ -50,7 +51,7 @@ export const Timeline: React.FC<{ c: Ctx }> = ({ c }) => {
   return (
     <ul className="tl" style={{ margin: 0, paddingLeft: 28 }}>
       {stops.map((w, i) => (
-        <li key={w.id + i} className={i === 0 ? 'start' : i === stops.length - 1 ? 'end' : ''}>
+        <li key={w.id + i} className={i === 0 ? 'start' : i === stops.length - 1 && c.selected != null ? 'end' : ''}>
           <b className="sm">{w.name}</b>
           <div className="xs muted">{w.title}</div>
           <div className="xs muted">{w.coord.lat.toFixed(3)}°, {w.coord.lng.toFixed(3)}° · {w.coord.elevation} m</div>
@@ -86,5 +87,3 @@ export const Weather: React.FC<{ c: Ctx }> = ({ c }) => {
     </>
   );
 };
-
-export { hazardText, hazardTone };

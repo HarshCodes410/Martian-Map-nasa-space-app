@@ -15,19 +15,48 @@ export const ElevationProfile: React.FC<{ c: Ctx }> = ({ c }) => {
   if (path.length < 2) return <p className="sm muted">Select a destination to see the elevation profile.</p>;
   const els = path.map((p) => p.elevation);
   const lo = Math.min(...els), hi = Math.max(...els), span = Math.max(1, hi - lo);
-  const X = (i: number) => (i / (path.length - 1)) * 600, Y = (e: number) => 150 - ((e - lo) / span) * 120;
+  const X = (i: number) => (i / (path.length - 1)) * 600;
+  const Y = (e: number) => 150 - ((e - lo) / span) * 120;
   const line = els.map((e, i) => `${X(i)},${Y(e)}`).join(' ');
   const km = (i: number) => ((i / (path.length - 1)) * c.route.totalDistanceKm).toFixed(2);
+  const clampedHover = hover != null ? Math.min(path.length - 1, Math.max(0, hover)) : null;
+  const pctLeft = clampedHover != null ? Math.max(12, Math.min(88, (clampedHover / (path.length - 1)) * 100)) : 50;
+  const dotY = clampedHover != null ? Y(els[clampedHover]) : 80;
+  const flipBelow = dotY < 55;
+
   return (
-    <div className="prof" onMouseLeave={() => setHover(null)}
-      onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHover(Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (path.length - 1))); }}>
+    <div
+      className="prof"
+      onMouseLeave={() => setHover(null)}
+      onMouseMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        if (r.width <= 0) return;
+        setHover(Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (path.length - 1)));
+      }}
+    >
       <svg viewBox="0 0 600 170" preserveAspectRatio="none">
         <defs><linearGradient id="pf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--brand)" stopOpacity=".45" /><stop offset="1" stopColor="var(--brand)" stopOpacity="0" /></linearGradient></defs>
         <polygon points={`0,170 ${line} 600,170`} fill="url(#pf)" />
         <polyline points={line} fill="none" stroke="var(--brand)" strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        {hover != null && <><line x1={X(hover)} x2={X(hover)} y1="0" y2="170" stroke="var(--violet)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" /><circle cx={X(hover)} cy={Y(els[hover])} r="6" fill="var(--card)" stroke="var(--brand)" strokeWidth="3" vectorEffect="non-scaling-stroke" /></>}
+        {clampedHover != null && (
+          <>
+            <line x1={X(clampedHover)} x2={X(clampedHover)} y1="0" y2="170" stroke="var(--violet)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+            <circle cx={X(clampedHover)} cy={dotY} r="6" fill="var(--card)" stroke="var(--brand)" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+          </>
+        )}
       </svg>
-      {hover != null && <div className="tip" style={{ left: `${(hover / (path.length - 1)) * 100}%`, top: `${(Y(els[hover]) / 170) * 190}px` }}>{Math.round(els[hover])} m · {km(hover)} km</div>}
+      {clampedHover != null && (
+        <div
+          className="tip"
+          style={{
+            left: `${pctLeft}%`,
+            top: `${(dotY / 170) * 190}px`,
+            transform: flipBelow ? 'translate(-50%, 16px)' : 'translate(-50%, -120%)',
+          }}
+        >
+          {Math.round(els[clampedHover])} m · {km(clampedHover)} km
+        </div>
+      )}
       <div className="row" style={{ border: 0, paddingBottom: 0 }}><span>Low {Math.round(lo)} m</span><span>High {Math.round(hi)} m</span></div>
     </div>
   );
@@ -36,27 +65,43 @@ export const ElevationProfile: React.FC<{ c: Ctx }> = ({ c }) => {
 export interface CmdItem { group: string; label: string; hint?: string; Icon: React.ElementType; run: () => void }
 
 export const CommandPalette: React.FC<{ items: CmdItem[]; onClose: () => void }> = ({ items, onClose }) => {
-  const [q, setQ] = useState(''); const [i, setI] = useState(0);
+  const [q, setQ] = useState('');
+  const [i, setI] = useState(0);
   const list = useMemo(() => items.filter((x) => (x.label + x.group + (x.hint || '')).toLowerCase().includes(q.toLowerCase())), [items, q]);
   const ref = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const activeIdx = list.length > 0 ? Math.min(i, list.length - 1) : 0;
+
   useEffect(() => ref.current?.focus(), []);
+  useEffect(() => {
+    const activeEl = listRef.current?.querySelector('li.on');
+    if (activeEl instanceof HTMLElement) {
+      activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIdx, q]);
+
   const run = (x?: CmdItem) => { if (x) { x.run(); onClose(); } };
   return (
     <div className="scrim" onMouseDown={onClose}>
       <div className="cmd" onMouseDown={(e) => e.stopPropagation()}>
-        <input ref={ref} value={q} placeholder="Search pages, waypoints, actions…" onChange={(e) => { setQ(e.target.value); setI(0); }}
+        <input
+          ref={ref}
+          value={q}
+          placeholder="Search pages, waypoints, actions…"
+          onChange={(e) => { setQ(e.target.value); setI(0); }}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setI((n) => Math.min(list.length - 1, n + 1)); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); setI((n) => Math.min(Math.max(0, list.length - 1), n + 1)); }
             if (e.key === 'ArrowUp') { e.preventDefault(); setI((n) => Math.max(0, n - 1)); }
-            if (e.key === 'Enter') run(list[i]);
+            if (e.key === 'Enter') run(list[activeIdx]);
             if (e.key === 'Escape') onClose();
-          }} />
-        <ul>
+          }}
+        />
+        <ul ref={listRef}>
           {list.length === 0 && <li className="muted">No matches</li>}
           {list.map((x, n) => (
             <React.Fragment key={x.group + x.label}>
               {(n === 0 || list[n - 1].group !== x.group) && <div className="h">{x.group}</div>}
-              <li className={n === i ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => run(x)}>
+              <li className={n === activeIdx ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => run(x)}>
                 <i><x.Icon size={16} /></i>{x.label}{x.hint && <small>{x.hint}</small>}
               </li>
             </React.Fragment>

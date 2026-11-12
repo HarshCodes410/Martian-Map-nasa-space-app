@@ -88,6 +88,15 @@ interface TelemetryData {
   rates?: Record<string, { hz?: number; age_s?: number }>;
 }
 
+// Virtual boulders in simulation world frame [x, y, radius]
+const SIM_OBSTACLES: [number, number, number][] = [
+  [18.5, -5.0, 0.9],
+  [11.0, -11.5, 1.1],
+  [20.0, -12.0, 0.8],
+  [13.5, -3.5, 0.7],
+  [8.0, -7.5, 1.0],
+];
+
 export const RoverTeleop: React.FC<Ctx> = (c) => {
   const [serverUrl, setServerUrl] = useState(() => {
     try {
@@ -100,41 +109,79 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
 
   const [connected, setConnected] = useState(true);
   const [simulated, setSimulated] = useState(true);
+  const [pollNonce, setPollNonce] = useState(0);
   const [mode, setMode] = useState<'auto' | 'manual' | 'stop'>('auto');
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
   const [speed, setSpeed] = useState(0.3);
   const [turn, setTurn] = useState(0.8);
   const [statusMsg, setStatusMsg] = useState('');
   const [data, setData] = useState<TelemetryData>({});
-  const [camTimestamp, setCamTimestamp] = useState(Date.now());
-  const [mapTimestamp, setMapTimestamp] = useState(Date.now());
+  const [camTimestamp, setCamTimestamp] = useState(() => Date.now());
+  const [mapTimestamp, setMapTimestamp] = useState(() => Date.now());
+  const [mapImgFailed, setMapImgFailed] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
 
   const radarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const driveTimerRef = useRef<number | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
   const activeKeysRef = useRef<Set<string>>(new Set());
   const serverInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Notify toast
-  const flash = (msg: string) => {
+  // Refs synced with state so keyboard & simulation callbacks avoid stale closures
+  const modeRef = useRef(mode);
+  const simulatedRef = useRef(simulated);
+  const speedRef = useRef(speed);
+  const turnRef = useRef(turn);
+  const manualCmdRef = useRef({ f: 0, a: 0 });
+  const simPoseRef = useRef({ x: 14.2, y: -8.7, yawDeg: 42, exploredM2: 145, t: 0 });
+
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { simulatedRef.current = simulated; }, [simulated]);
+  useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { turnRef.current = turn; }, [turn]);
+
+  const flash = useCallback((msg: string) => {
     setStatusMsg(msg);
-    setTimeout(() => setStatusMsg(''), 3000);
-  };
+    if (flashTimerRef.current !== null) {
+      window.clearTimeout(flashTimerRef.current);
+    }
+    flashTimerRef.current = window.setTimeout(() => {
+      setStatusMsg('');
+      flashTimerRef.current = null;
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (driveTimerRef.current !== null) window.clearInterval(driveTimerRef.current);
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+    };
+  }, []);
 
   const saveServer = () => {
     if (!serverInputRef.current) return;
     const clean = serverInputRef.current.value.trim().replace(/\/$/, '');
+    if (!clean) return;
     setServerUrl(clean);
     try {
       localStorage.setItem('roverServer', clean);
-    } catch {}
-    flash(`Target server set to ${clean}`);
+    } catch {
+      // Ignore storage errors
+    }
+    setMapImgFailed(false);
+    setSimulated(false);
+    setPollNonce((n) => n + 1);
+    flash(`Connecting to ${clean}…`);
   };
 
   // Switch Mode API
   const handleSetMode = useCallback((newMode: 'auto' | 'manual' | 'stop') => {
     setMode(newMode);
-    if (simulated) {
+    modeRef.current = newMode;
+    if (newMode !== 'manual') {
+      manualCmdRef.current = { f: 0, a: 0 };
+    }
+    if (simulatedRef.current) {
       flash(`[SIM] Rover switched to ${newMode.toUpperCase()}`);
       return;
     }
@@ -149,15 +196,16 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       .catch(() => {
         flash('ROS server unreachable — check data_server status');
       });
-  }, [serverUrl, simulated]);
+  }, [serverUrl, flash]);
 
-  // Send Drive Twist
+  // Send Drive Twist (both ROS HTTP and simulated manual command)
   const sendDriveCmd = useCallback((f: number, a: number) => {
-    if (simulated) return;
-    const lin = (f * speed).toFixed(3);
-    const ang = (a * turn).toFixed(3);
+    manualCmdRef.current = { f, a };
+    if (simulatedRef.current) return;
+    const lin = (f * speedRef.current).toFixed(3);
+    const ang = (a * turnRef.current).toFixed(3);
     fetch(`${serverUrl}/api/drive?lin=${lin}&ang=${ang}`, { mode: 'cors' }).catch(() => {});
-  }, [serverUrl, speed, turn, simulated]);
+  }, [serverUrl]);
 
   const setContinuousDrive = useCallback((f: number, a: number) => {
     if (driveTimerRef.current !== null) {
@@ -168,17 +216,26 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       sendDriveCmd(0, 0);
       return;
     }
-    if (mode !== 'manual') {
+    if (modeRef.current !== 'manual') {
       handleSetMode('manual');
     }
     sendDriveCmd(f, a);
     driveTimerRef.current = window.setInterval(() => sendDriveCmd(f, a), 140);
-  }, [mode, handleSetMode, sendDriveCmd]);
+  }, [handleSetMode, sendDriveCmd]);
 
-  // Keyboard controls
+  // Keyboard controls (stable listener without tearing down on mode change)
   useEffect(() => {
+    const computeAxis = () => {
+      const f = (activeKeysRef.current.has('w') || activeKeysRef.current.has('arrowup') ? 1 : 0) -
+                (activeKeysRef.current.has('s') || activeKeysRef.current.has('arrowdown') ? 1 : 0);
+      const a = (activeKeysRef.current.has('a') || activeKeysRef.current.has('arrowleft') ? 1 : 0) -
+                (activeKeysRef.current.has('d') || activeKeysRef.current.has('arrowright') ? 1 : 0);
+      return { f, a };
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['input', 'textarea'].includes((e.target as HTMLElement).tagName.toLowerCase())) return;
+      const target = e.target as HTMLElement | null;
+      if (target && ['input', 'textarea'].includes(target.tagName.toLowerCase())) return;
       const k = e.key.toLowerCase();
       if (k === ' ') {
         e.preventDefault();
@@ -202,10 +259,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         e.preventDefault();
         if (!activeKeysRef.current.has(k)) {
           activeKeysRef.current.add(k);
-          const f = (activeKeysRef.current.has('w') || activeKeysRef.current.has('arrowup') ? 1 : 0) -
-                    (activeKeysRef.current.has('s') || activeKeysRef.current.has('arrowdown') ? 1 : 0);
-          const a = (activeKeysRef.current.has('a') || activeKeysRef.current.has('arrowleft') ? 1 : 0) -
-                    (activeKeysRef.current.has('d') || activeKeysRef.current.has('arrowright') ? 1 : 0);
+          const { f, a } = computeAxis();
           setContinuousDrive(f, a);
         }
       }
@@ -216,10 +270,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       const valid = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
       if (valid.includes(k)) {
         activeKeysRef.current.delete(k);
-        const f = (activeKeysRef.current.has('w') || activeKeysRef.current.has('arrowup') ? 1 : 0) -
-                  (activeKeysRef.current.has('s') || activeKeysRef.current.has('arrowdown') ? 1 : 0);
-        const a = (activeKeysRef.current.has('a') || activeKeysRef.current.has('arrowleft') ? 1 : 0) -
-                  (activeKeysRef.current.has('d') || activeKeysRef.current.has('arrowright') ? 1 : 0);
+        const { f, a } = computeAxis();
         setContinuousDrive(f, a);
       }
     };
@@ -239,9 +290,11 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
     };
   }, [handleSetMode, setContinuousDrive]);
 
-  // Polling Real ROS Data
+  // Polling Real ROS Data (only when user selects live ROS mode)
   useEffect(() => {
+    if (simulated) return;
     let active = true;
+
     const poll = async () => {
       try {
         const res = await fetch(`${serverUrl}/api/all?full=1`, { mode: 'cors' });
@@ -250,25 +303,20 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         if (!active) return;
         setData(json);
         setConnected(true);
-        setSimulated(false); // Real ROS detected
         if (json.drive_mode && ['auto', 'manual', 'stop'].includes(json.drive_mode)) {
           setMode(json.drive_mode as 'auto' | 'manual' | 'stop');
         }
       } catch {
         if (!active) return;
-        if (!simulated) {
-          setConnected(false);
-        }
+        setConnected(false);
       }
     };
 
-    const dataTimer = setInterval(poll, simulated ? 2500 : 450);
+    const dataTimer = setInterval(poll, 450);
     const imgTimer = setInterval(() => {
-      if (!simulated && connected) {
-        const now = Date.now();
-        setCamTimestamp(now);
-        setMapTimestamp(now);
-      }
+      const now = Date.now();
+      setCamTimestamp(now);
+      setMapTimestamp(now);
     }, 1200);
 
     poll();
@@ -277,78 +325,133 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       clearInterval(dataTimer);
       clearInterval(imgTimer);
     };
-  }, [serverUrl, simulated, connected]);
+  }, [serverUrl, simulated, pollNonce]);
 
-  // Simulation fallback ticker
+  // Interactive Simulation Ticker (responds to AUTO, MANUAL WASD/D-Pad, and STOP)
   useEffect(() => {
     if (!simulated) return;
-    let t = 0;
+    const dt = 0.25;
     const simTimer = setInterval(() => {
-      t += 0.5;
-      const fakeRanges: number[] = [];
-      for (let i = 0; i < 360; i++) {
-        const angle = (i * Math.PI) / 180;
-        const dist = 5.5 + 3.2 * Math.sin(angle * 3 + t * 0.8) + (Math.random() - 0.5) * 0.4;
-        fakeRanges.push(Math.max(0.6, Math.min(12.0, dist)));
+      const pose = simPoseRef.current;
+      pose.t += dt;
+
+      const curMode = modeRef.current;
+      let linCmd = 0;
+      let angCmd = 0;
+
+      if (curMode === 'auto') {
+        linCmd = 0.28;
+        angCmd = 0.14 * Math.sin(pose.t * 0.35);
+      } else if (curMode === 'manual') {
+        linCmd = manualCmdRef.current.f * speedRef.current;
+        angCmd = manualCmdRef.current.a * turnRef.current;
       }
-      const minRange = Math.min(...fakeRanges);
-      const isAuto = mode === 'auto';
-      const isStop = mode === 'stop';
-      const currentSpeed = isStop ? 0.0 : (isAuto ? 0.28 : speed);
+
+      // Integrate pose
+      pose.yawDeg = ((pose.yawDeg + (angCmd * dt * 180) / Math.PI) % 360 + 360) % 360;
+      const yawRad = (pose.yawDeg * Math.PI) / 180;
+      pose.x += Math.cos(yawRad) * linCmd * dt;
+      pose.y += Math.sin(yawRad) * linCmd * dt;
+
+      // Wrap rover softly inside a 14m exploration arena centered at (14, -8)
+      if (Math.hypot(pose.x - 14, pose.y + 8) > 10) {
+        pose.yawDeg = (pose.yawDeg + 120) % 360;
+      }
+      if (Math.abs(linCmd) > 0.01) {
+        pose.exploredM2 += Math.abs(linCmd) * dt * 2.2;
+      }
+
+      // Raycast 360 LiDAR against perimeter & virtual boulders in rover frame
+      const fakeRanges: number[] = [];
+      let minRange = 12.0;
+      let minAngle = 0;
+
+      for (let i = 0; i < 360; i++) {
+        // Angle index 0 is rear (-pi), index 180 is forward (0) matching Radar & 3D projection
+        const relAng = -Math.PI + (i * 2 * Math.PI) / 360;
+        const worldAng = yawRad + relAng;
+        const dx = Math.cos(worldAng);
+        const dy = Math.sin(worldAng);
+
+        let r = 8.5 + 1.8 * Math.sin(worldAng * 3 + 0.5) + (Math.random() - 0.5) * 0.15;
+
+        for (const [ox, oy, rad] of SIM_OBSTACLES) {
+          const vx = ox - pose.x;
+          const vy = oy - pose.y;
+          const proj = vx * dx + vy * dy;
+          if (proj > 0) {
+            const perpSq = vx * vx + vy * vy - proj * proj;
+            if (perpSq < rad * rad) {
+              const hit = proj - Math.sqrt(rad * rad - perpSq);
+              if (hit > 0.4 && hit < r) r = hit;
+            }
+          }
+        }
+
+        const clamped = Math.max(0.45, Math.min(12.0, r));
+        fakeRanges.push(clamped);
+        if (clamped < minRange) {
+          minRange = clamped;
+          minAngle = Math.round((relAng * 180) / Math.PI);
+        }
+      }
+
+      const pitchDeg = Math.cos(pose.x * 0.4) * 3.2;
+      const rollDeg = Math.sin(pose.y * 0.4) * 2.4;
 
       setData({
-        drive_mode: mode,
+        drive_mode: curMode,
         obstacle: {
-          state: isStop ? 'STOPPED' : (minRange < 1.2 ? 'AVOID' : minRange < 2.5 ? 'CAUTION' : 'CRUISE'),
-          closest_dist: isStop ? 0.0 : minRange,
-          front_dist: fakeRanges[0],
+          state: curMode === 'stop' ? 'STOPPED' : (minRange < 1.2 ? 'AVOID' : minRange < 2.5 ? 'CAUTION' : 'CRUISE'),
+          closest_dist: minRange,
+          front_dist: fakeRanges[180],
           left_dist: fakeRanges[90],
           right_dist: fakeRanges[270],
-          rear_dist: fakeRanges[180],
-          tilt_deg: 2.4 + Math.sin(t * 0.5) * 1.5,
+          rear_dist: fakeRanges[0],
+          tilt_deg: Math.hypot(pitchDeg, rollDeg),
           camera_rock_fraction: 0.12,
         },
         scan: {
           ranges: fakeRanges,
-          min_dist: 0.6,
+          min_dist: 0.45,
           max_dist: 12.0,
           closest_dist: minRange,
-          closest_angle_deg: 18,
+          closest_angle_deg: minAngle,
         },
         imu: {
-          roll_deg: Math.sin(t * 0.4) * 2.1,
-          pitch_deg: Math.cos(t * 0.3) * 3.4,
-          yaw_deg: (t * 8) % 360,
+          roll_deg: rollDeg,
+          pitch_deg: pitchDeg,
+          yaw_deg: pose.yawDeg,
           gyro_x: 0.01,
           gyro_y: 0.02,
-          gyro_z: isStop ? 0.0 : 0.05,
+          gyro_z: angCmd,
           accel_x: 0.12,
           accel_y: -0.08,
           accel_z: 3.71,
         },
         fused_odom: {
-          x: 14.2 + Math.cos(t * 0.1) * 6,
-          y: -8.7 + Math.sin(t * 0.1) * 6,
-          yaw_deg: (t * 8) % 360,
-          linear_speed: currentSpeed,
-          angular_speed: isStop ? 0.0 : 0.05,
+          x: pose.x,
+          y: pose.y,
+          yaw_deg: pose.yawDeg,
+          linear_speed: linCmd,
+          angular_speed: angCmd,
         },
         odom: {
-          x: 14.1 + Math.cos(t * 0.1) * 6,
-          y: -8.8 + Math.sin(t * 0.1) * 6,
-          yaw_deg: (t * 8) % 360,
-          linear_speed: currentSpeed,
-          angular_speed: isStop ? 0.0 : 0.05,
+          x: pose.x - 0.08,
+          y: pose.y + 0.06,
+          yaw_deg: pose.yawDeg,
+          linear_speed: linCmd,
+          angular_speed: angCmd,
         },
         cmd_vel: {
-          linear_x: currentSpeed,
-          angular_z: isStop ? 0.0 : 0.0,
+          linear_x: linCmd,
+          angular_z: angCmd,
         },
         map: {
           width: 240,
           height: 240,
           resolution: 0.05,
-          explored_area_m2: Math.round(145 + t * 1.5),
+          explored_area_m2: Math.round(pose.exploredM2),
         },
         rates: {
           '/scan': { hz: 10.0, age_s: 0.08 },
@@ -360,10 +463,10 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         },
       });
       setConnected(true);
-    }, 450);
+    }, 250);
 
     return () => clearInterval(simTimer);
-  }, [simulated, mode, speed]);
+  }, [simulated]);
 
   // Canvas LiDAR Radar Renderer
   useEffect(() => {
@@ -382,7 +485,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
     ctx.fillStyle = '#0f0c19';
     ctx.fillRect(0, 0, S, S);
 
-    // Grid rings
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
     ctx.font = '10px "Plus Jakarta Sans", sans-serif';
@@ -395,7 +497,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
       ctx.fillText(`${r}m`, cx + 4, cy - (r / MAXR) * R + 11);
     }
 
-    // Crosshairs
     ctx.beginPath();
     ctx.moveTo(cx, cy - R);
     ctx.lineTo(cx, cy + R);
@@ -403,7 +504,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
     ctx.lineTo(cx + R, cy);
     ctx.stroke();
 
-    // Scan points
     const ranges = data.scan?.ranges;
     if (ranges && ranges.length > 0) {
       const n = ranges.length;
@@ -415,17 +515,16 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         const py = cy - (r * Math.cos(ang) / MAXR) * R;
 
         if (r < 1.0) {
-          ctx.fillStyle = '#ee4b5b'; // red danger
+          ctx.fillStyle = '#ee4b5b';
         } else if (r < 2.2) {
-          ctx.fillStyle = '#f5a524'; // amber warning
+          ctx.fillStyle = '#f5a524';
         } else {
-          ctx.fillStyle = '#10b5a5'; // teal safe
+          ctx.fillStyle = '#10b5a5';
         }
         ctx.fillRect(px - 1.5, py - 1.5, 3, 3);
       }
     }
 
-    // Rover body triangle
     ctx.fillStyle = '#ff5a36';
     ctx.beginPath();
     ctx.moveTo(cx, cy - 12);
@@ -446,11 +545,10 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
 
   return (
     <>
-      {/* Hero Banner matching Overview.tsx */}
       <section className="hero">
         <div style={{ position: 'relative', zIndex: 1 }}>
           <span className="eyebrow">
-            ROS 2 Teleoperation &middot; {connected ? (simulated ? 'Simulated Telemetry (Live)' : 'ROS 2 Humble Connected') : 'Awaiting Bridge'}
+            ROS 2 Teleoperation &middot; {simulated ? 'Simulated Telemetry (Live)' : connected ? 'ROS 2 Humble Connected' : 'Awaiting Bridge'}
           </span>
           <h2>ARES Mars Rover &middot; Live Telemetry</h2>
           <p>
@@ -480,8 +578,16 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             <button
               className="btn"
               onClick={() => {
-                setSimulated(!simulated);
-                flash(simulated ? 'Switched to Live ROS 2 mode' : 'Switched to Simulated Telemetry mode');
+                const nextSim = !simulated;
+                setSimulated(nextSim);
+                if (!nextSim) {
+                  setConnected(false);
+                  setMapImgFailed(false);
+                  setPollNonce((n) => n + 1);
+                } else {
+                  setConnected(true);
+                }
+                flash(nextSim ? 'Switched to Simulated Telemetry mode' : `Connecting to ${serverUrl}…`);
               }}
             >
               <RefreshCw size={15} /> {simulated ? 'Use Real ROS Server' : 'Run Simulated Telemetry'}
@@ -495,7 +601,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             <span>Drive mode</span>
           </div>
           <div className="ring" style={{ ['--c' as string]: 'var(--teal)', ['--v' as string]: connected ? 100 : 0 }}>
-            <div className="dial"><b>{connected ? (simulated ? 'SIM' : 'LIVE') : 'OFF'}</b></div>
+            <div className="dial"><b>{simulated ? 'SIM' : connected ? 'LIVE' : 'OFF'}</b></div>
             <span>ROS 2 Link</span>
           </div>
           <div className="ring" style={{ ['--c' as string]: 'var(--amber)', ['--v' as string]: Math.min(100, Math.round((data.map?.explored_area_m2 ?? 60) / 2)) }}>
@@ -505,7 +611,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         </div>
       </section>
 
-      {/* Top Connection Bar */}
       <div className="card" style={{ padding: '14px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -534,8 +639,8 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             <button className="btn" style={{ padding: '6px 14px', fontSize: 12.5 }} onClick={saveServer}>
               Connect
             </button>
-            <span className={`badge ${connected ? (simulated ? 'warn' : 'ok') : 'bad'}`}>
-              ● {connected ? (simulated ? 'Simulated Telemetry' : 'Connected (port 8080)') : 'Server Offline'}
+            <span className={`badge ${simulated ? 'warn' : connected ? 'ok' : 'bad'}`}>
+              ● {simulated ? 'Simulated Telemetry' : connected ? `Connected (${serverUrl})` : 'Server Offline'}
             </span>
             <span className={`badge ${avoiderColor}`}>
               Avoider: {avoiderState}
@@ -576,7 +681,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         )}
       </div>
 
-      {/* Primary Telemetry KPIs */}
       <div className="kpis">
         <Kpi
           icon={<Gauge size={18} />}
@@ -616,11 +720,8 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
         />
       </div>
 
-      {/* Main Grid: Live Radar, Controls, Camera, Map */}
       <div className="g2">
-        {/* Left column: Radar & Video Feeds */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* 3D Digital Twin / 360 LiDAR Radar */}
           <div className="card">
             <h3>
               <span>{viewMode === '3d' ? 'Interactive 3D Rover Digital Twin' : '360° LiDAR Top-Down Radar'}</span>
@@ -647,7 +748,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
                 pitchDeg={data.imu?.pitch_deg ?? 0}
                 rollDeg={data.imu?.roll_deg ?? 0}
                 yawDeg={data.imu?.yaw_deg ?? 0}
-                linearSpeed={data.fused_odom?.linear_speed ?? (mode === 'auto' ? 0.28 : 0)}
+                linearSpeed={data.fused_odom?.linear_speed ?? 0}
                 angularSpeed={data.fused_odom?.angular_speed ?? 0}
                 scanRanges={data.scan?.ranges}
                 driveMode={mode}
@@ -677,9 +778,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             )}
           </div>
 
-          {/* Live Camera & SLAM Map Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-            {/* Rover Navigation Camera */}
             <div className="card">
               <h3>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -710,7 +809,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
               </div>
             </div>
 
-            {/* SLAM Map */}
             <div className="card">
               <h3>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -719,14 +817,13 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
                 <span className="badge brand">/map</span>
               </h3>
               <div style={{ minHeight: 180, background: '#0a0812', borderRadius: 12, overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
-                {connected && !simulated ? (
+                {connected && !simulated && !mapImgFailed ? (
                   <img
                     src={`${serverUrl}/map.png?${mapTimestamp}`}
                     alt="SLAM Map"
                     style={{ width: '100%', height: 200, objectFit: 'contain' }}
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
+                    onLoad={() => setMapImgFailed(false)}
+                    onError={() => setMapImgFailed(true)}
                   />
                 ) : (
                   <div style={{ color: 'var(--muted)', textAlign: 'center', padding: 24, fontSize: 13 }}>
@@ -742,9 +839,7 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
           </div>
         </div>
 
-        {/* Right column: Controls & Telemetry Data */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Drive Control Panel */}
           <div className="card">
             <h3>Teleoperation Controls</h3>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -801,7 +896,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
               />
             </div>
 
-            {/* D-Pad */}
             <div
               style={{
                 display: 'grid',
@@ -822,10 +916,12 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
                 { f: -1, a: 1, Icon: ArrowDownLeft, tip: 'Reverse Left' },
                 { f: -1, a: 0, Icon: ArrowDown, tip: 'Reverse (S)' },
                 { f: -1, a: -1, Icon: ArrowDownRight, tip: 'Reverse Right' },
-              ].map(({ f, a, Icon, isStop }, idx) => (
+              ].map(({ f, a, Icon, tip, isStop }, idx) => (
                 <button
                   key={idx}
                   className="btn"
+                  title={tip}
+                  aria-label={tip}
                   style={{
                     padding: 0,
                     display: 'grid',
@@ -848,6 +944,9 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
                   onPointerLeave={() => {
                     if (!isStop) setContinuousDrive(0, 0);
                   }}
+                  onPointerCancel={() => {
+                    if (!isStop) setContinuousDrive(0, 0);
+                  }}
                 >
                   <Icon size={20} />
                 </button>
@@ -860,7 +959,6 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             </div>
           </div>
 
-          {/* Sensor Diagnostics */}
           <div className="card">
             <h3>Obstacle &amp; Perimeter Distances</h3>
             <Row k="Autonomous Brain State" v={<span className={`badge ${avoiderColor}`}>{avoiderState}</span>} />
@@ -872,14 +970,13 @@ export const RoverTeleop: React.FC<Ctx> = (c) => {
             <Row k="Camera rock fraction" v={`${Math.round((data.obstacle?.camera_rock_fraction ?? 0) * 100)}%`} />
           </div>
 
-          {/* IMU & Fusion Diagnostics */}
           <div className="card">
             <h3>EKF &amp; IMU Navigation State</h3>
             <Row k="Roll / Pitch / Yaw" v={`${(data.imu?.roll_deg ?? 0).toFixed(1)}° / ${(data.imu?.pitch_deg ?? 0).toFixed(1)}° / ${(data.imu?.yaw_deg ?? 0).toFixed(1)}°`} />
             <Row k="Angular velocity (Gyro Z)" v={`${(data.imu?.gyro_z ?? 0).toFixed(3)} rad/s`} />
             <Row k="Linear accel (Mars Z)" v={`${(data.imu?.accel_z ?? 3.71).toFixed(2)} m/s²`} />
-            <Row k="Fused coordinates (X, Y)" v={`(${ (data.fused_odom?.x ?? 0).toFixed(2) }, ${ (data.fused_odom?.y ?? 0).toFixed(2) }) m`} />
-            <Row k="Raw wheel odom (X, Y)" v={`(${ (data.odom?.x ?? 0).toFixed(2) }, ${ (data.odom?.y ?? 0).toFixed(2) }) m`} />
+            <Row k="Fused coordinates (X, Y)" v={`(${(data.fused_odom?.x ?? 0).toFixed(2)}, ${(data.fused_odom?.y ?? 0).toFixed(2)}) m`} />
+            <Row k="Raw wheel odom (X, Y)" v={`(${(data.odom?.x ?? 0).toFixed(2)}, ${(data.odom?.y ?? 0).toFixed(2)}) m`} />
             <Row k="Velocity cmd (/cmd_vel)" v={`v=${(data.cmd_vel?.linear_x ?? 0).toFixed(2)} m/s, ω=${(data.cmd_vel?.angular_z ?? 0).toFixed(2)} rad/s`} />
           </div>
         </div>

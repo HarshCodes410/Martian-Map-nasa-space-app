@@ -12,6 +12,21 @@ interface Terrain3DProps {
   onSelectWaypoint: (wp: Waypoint) => void;
 }
 
+function disposeGroupChildren(group: THREE.Group) {
+  while (group.children.length > 0) {
+    const child = group.children[0];
+    group.remove(child);
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      if (Array.isArray(child.material)) {
+        child.material.forEach((m) => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+  }
+}
+
 export const Terrain3D: React.FC<Terrain3DProps> = ({
   site,
   grid,
@@ -22,29 +37,40 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const terrainMeshRef = useRef<THREE.Mesh | null>(null);
   const routeLineRef = useRef<THREE.Line | null>(null);
   const waypointGroupRef = useRef<THREE.Group | null>(null);
+  const onSelectWaypointRef = useRef(onSelectWaypoint);
+  const waypointsRef = useRef(site.waypoints);
+
+  useEffect(() => {
+    onSelectWaypointRef.current = onSelectWaypoint;
+    waypointsRef.current = site.waypoints;
+  }, [onSelectWaypoint, site.waypoints]);
 
   // Mouse interaction state
   const isDraggingRef = useRef(false);
+  const downPosRef = useRef({ x: 0, y: 0 });
   const prevMouseRef = useRef({ x: 0, y: 0 });
   const cameraAngleRef = useRef({ rotX: 0.65, rotY: 0.4, dist: 130 });
 
   useEffect(() => {
-    if (!mountRef.current) return;
+    const mountEl = mountRef.current;
+    if (!mountEl) return;
 
-    const width = mountRef.current.clientWidth;
-    const height = mountRef.current.clientHeight;
+    const width = Math.max(1, mountEl.clientWidth);
+    const height = Math.max(1, mountEl.clientHeight);
 
     // 1. Setup Scene, Camera, Renderer
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x0f172a); // Softer cosmic slate/navy instead of pitch black
+    scene.background = new THREE.Color(0x0f172a);
     scene.fog = new THREE.FogExp2(0x181e2b, 0.004);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 1, 1000);
+    cameraRef.current = camera;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     rendererRef.current = renderer;
     renderer.setSize(width, height);
@@ -52,7 +78,7 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    mountRef.current.appendChild(renderer.domElement);
+    mountEl.appendChild(renderer.domElement);
 
     // 2. Lighting (Warm Martian golden-hour sun + sky backfill)
     const ambientLight = new THREE.AmbientLight(0x384860, 1.4);
@@ -65,7 +91,6 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     sunLight.shadow.mapSize.height = 1024;
     scene.add(sunLight);
 
-    // Warm terracotta horizon bounce light
     const horizonBounce = new THREE.DirectionalLight(0xea580c, 0.55);
     horizonBounce.position.set(-60, 20, -50);
     scene.add(horizonBounce);
@@ -95,27 +120,30 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     scene.add(dustPoints);
 
     // Animation Loop
-    let animationFrameId: number;
+    let animationFrameId = 0;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
 
-      // Rotate camera around target
       const { rotX, rotY, dist } = cameraAngleRef.current;
       camera.position.x = dist * Math.sin(rotY) * Math.cos(rotX);
       camera.position.y = dist * Math.sin(rotX);
       camera.position.z = dist * Math.cos(rotY) * Math.cos(rotX);
       camera.lookAt(0, 0, 0);
 
-      // Gentle dust swirl
       dustPoints.rotation.y += 0.0008;
 
       renderer.render(scene, camera);
     };
     animate();
 
+    // Raycaster for clicking 3D waypoint markers
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
     // Mouse Controls
     const handleMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
+      downPosRef.current = { x: e.clientX, y: e.clientY };
       prevMouseRef.current = { x: e.clientX, y: e.clientY };
     };
 
@@ -129,8 +157,31 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
       cameraAngleRef.current.rotX = Math.max(0.15, Math.min(1.4, cameraAngleRef.current.rotX + dy * 0.008));
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
+
+      // Treat as a click if pointer barely moved
+      const moved = Math.hypot(e.clientX - downPosRef.current.x, e.clientY - downPosRef.current.y);
+      if (moved < 5 && waypointGroupRef.current) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        ) {
+          pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          raycaster.setFromCamera(pointer, camera);
+          const hits = raycaster.intersectObjects(waypointGroupRef.current.children, false);
+          if (hits.length > 0) {
+            const wpId = hits[0].object.userData.waypointId as string | undefined;
+            const wp = waypointsRef.current.find((item) => item.id === wpId);
+            if (wp) onSelectWaypointRef.current(wp);
+          }
+        }
+      }
     };
 
     const handleWheel = (e: WheelEvent) => {
@@ -144,26 +195,45 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
     dom.addEventListener('wheel', handleWheel, { passive: false });
 
-    // Resize Handler
     const handleResize = () => {
-      if (!mountRef.current || !rendererRef.current) return;
-      const w = mountRef.current.clientWidth;
-      const h = mountRef.current.clientHeight;
+      if (!mountEl || !rendererRef.current) return;
+      const w = Math.max(1, mountEl.clientWidth);
+      const h = Math.max(1, mountEl.clientHeight);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(mountEl);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
       dom.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       dom.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', handleResize);
-      if (mountRef.current && renderer.domElement) {
-        mountRef.current.removeChild(renderer.domElement);
+
+      if (terrainMeshRef.current) {
+        terrainMeshRef.current.geometry.dispose();
+        (terrainMeshRef.current.material as THREE.Material).dispose();
+        terrainMeshRef.current = null;
+      }
+      if (routeLineRef.current) {
+        routeLineRef.current.geometry.dispose();
+        (routeLineRef.current.material as THREE.Material).dispose();
+        routeLineRef.current = null;
+      }
+      if (waypointGroupRef.current) {
+        disposeGroupChildren(waypointGroupRef.current);
+      }
+      dustGeometry.dispose();
+      dustMaterial.dispose();
+
+      if (mountEl.contains(renderer.domElement)) {
+        mountEl.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
@@ -185,7 +255,6 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     const pos = geometry.attributes.position;
     const colors = new Float32Array(pos.count * 3);
 
-    // Elevation scaling factor
     const [minElev, maxElev] = site.elevationRange;
     const elevSpan = maxElev - minElev || 1;
 
@@ -195,56 +264,48 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
       const cell = grid[row]?.[col];
 
       if (cell) {
-        // Vertical displacement
-        const normElev = (cell.elevation - minElev) / elevSpan;
-        pos.setY(i, normElev * 20); // 20 units vertical range
+        const normElev = Math.max(0, Math.min(1, (cell.elevation - minElev) / elevSpan));
+        pos.setY(i, normElev * 20);
 
-        // Color coding depending on active NASA Science Layer
-        let r = 0.75, g = 0.35, b = 0.2; // default Mars red-orange
+        let r = 0.75, g = 0.35, b = 0.2;
 
         if (activeLayer === 'topography') {
-          // Hypsometric tint + slope hazard highlighting
           if (cell.slopeDeg > 15) {
-            r = 0.95; g = 0.15; b = 0.15; // Steep danger red
+            r = 0.95; g = 0.15; b = 0.15;
           } else if (cell.slopeDeg > 10) {
-            r = 0.95; g = 0.65; b = 0.15; // Warning amber
+            r = 0.95; g = 0.65; b = 0.15;
           } else {
-            // Elevation gradient (dark low to bright crest)
             r = 0.2 + normElev * 0.6;
             g = 0.3 + normElev * 0.5;
             b = 0.4 + normElev * 0.4;
           }
         } else if (activeLayer === 'radiation') {
-          // RAD Sensor Heatmap: Cyan/Blue (safe/shielded) to Magenta (high flux)
           const radFactor = Math.min(1, Math.max(0, (cell.radiation - 0.011) / 0.007));
           r = 0.1 + radFactor * 0.85;
           g = 0.2 + (1 - radFactor) * 0.5;
           b = 0.8 + (1 - radFactor) * 0.2;
         } else if (activeLayer === 'spectral') {
-          // CRISM Mineralogy
           if (cell.mineralSignature === 'carbonate') {
-            r = 0.1; g = 0.9; b = 0.4; // Emerald green
+            r = 0.1; g = 0.9; b = 0.4;
           } else if (cell.mineralSignature === 'clay') {
-            r = 0.1; g = 0.6; b = 0.95; // Cyan blue
+            r = 0.1; g = 0.6; b = 0.95;
           } else if (cell.mineralSignature === 'sulfate') {
-            r = 0.95; g = 0.85; b = 0.15; // Bright gold
+            r = 0.95; g = 0.85; b = 0.15;
           } else if (cell.mineralSignature === 'hematite') {
-            r = 0.85; g = 0.2; b = 0.8; // Purple hematite
+            r = 0.85; g = 0.2; b = 0.8;
           } else {
-            r = 0.3; g = 0.25; b = 0.22; // Neutral basalt regolith
+            r = 0.3; g = 0.25; b = 0.22;
           }
         } else if (activeLayer === 'thermal') {
-          // THEMIS Thermal Inertia: Deep blue cold to radiant bright orange
           const therm = normElev;
           r = 0.1 + therm * 0.8;
           g = 0.2 + therm * 0.5;
           b = 0.7 - therm * 0.4;
         } else {
-          // Optical: HiRISE / CTX realistic Martian surface colors
           if (cell.isSandDune) {
-            r = 0.45; g = 0.25; b = 0.18; // dark rippled dunes
+            r = 0.45; g = 0.25; b = 0.18;
           } else if (cell.isBoxwork) {
-            r = 0.85; g = 0.75; b = 0.6; // whitish-tan mineral ridges
+            r = 0.85; g = 0.75; b = 0.6;
           } else {
             r = 0.72 + normElev * 0.15;
             g = 0.38 + normElev * 0.1;
@@ -275,52 +336,50 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
     terrainMeshRef.current = mesh;
   }, [site, grid, activeLayer]);
 
-  // Update Waypoint Markers in 3D
+  // Update Waypoint Markers in 3D (disposing old geometries/materials)
   useEffect(() => {
-    if (!waypointGroupRef.current || !grid.length) return;
+    const group = waypointGroupRef.current;
+    if (!group || !grid.length) return;
 
-    // Clear previous markers
-    while (waypointGroupRef.current.children.length > 0) {
-      const child = waypointGroupRef.current.children[0];
-      waypointGroupRef.current.remove(child);
-    }
+    disposeGroupChildren(group);
 
     const [minElev, maxElev] = site.elevationRange;
     const elevSpan = maxElev - minElev || 1;
 
     site.waypoints.forEach((wp) => {
-      const worldX = (wp.coord.x - 50);
-      const worldZ = (wp.coord.y - 50);
+      const worldX = wp.coord.x - 50;
+      const worldZ = wp.coord.y - 50;
 
-      // Find elevation at this coordinate
       const gridX = Math.min(GRID_COLS - 1, Math.max(0, Math.round((wp.coord.x / 100) * (GRID_COLS - 1))));
       const gridY = Math.min(GRID_ROWS - 1, Math.max(0, Math.round((wp.coord.y / 100) * (GRID_ROWS - 1))));
-      const elev = grid[gridY]?.[gridX]?.elevation || wp.coord.elevation;
-      const worldY = ((elev - minElev) / elevSpan) * 20;
+      const elev = grid[gridY]?.[gridX]?.elevation ?? wp.coord.elevation;
+      const normElev = Math.max(0, Math.min(1, (elev - minElev) / elevSpan));
+      const worldY = normElev * 20;
 
       const isSelected = selectedWaypoint?.id === wp.id;
+      const markerColor = isSelected ? 0x00f0ff : wp.type === 'base' ? 0x10b981 : wp.type === 'hazard' ? 0xef4444 : 0xf59e0b;
 
-      // Vertical Laser Marker Beacon
       const beaconGeo = new THREE.CylinderGeometry(0.3, 0.3, 14, 8);
       const beaconMat = new THREE.MeshBasicMaterial({
-        color: isSelected ? 0x00f0ff : wp.type === 'base' ? 0x10b981 : wp.type === 'hazard' ? 0xef4444 : 0xf59e0b,
+        color: markerColor,
         transparent: true,
         opacity: isSelected ? 0.9 : 0.6,
       });
       const beacon = new THREE.Mesh(beaconGeo, beaconMat);
       beacon.position.set(worldX, worldY + 7, worldZ);
-      waypointGroupRef.current?.add(beacon);
+      beacon.userData.waypointId = wp.id;
+      group.add(beacon);
 
-      // Top glowing sphere
       const sphereGeo = new THREE.SphereGeometry(isSelected ? 1.8 : 1.2, 16, 16);
       const sphereMat = new THREE.MeshStandardMaterial({
-        color: isSelected ? 0x00f0ff : wp.type === 'base' ? 0x10b981 : wp.type === 'hazard' ? 0xef4444 : 0xf59e0b,
-        emissive: isSelected ? 0x00f0ff : wp.type === 'base' ? 0x10b981 : 0xf59e0b,
+        color: markerColor,
+        emissive: isSelected ? 0x00f0ff : wp.type === 'base' ? 0x10b981 : wp.type === 'hazard' ? 0xef4444 : 0xf59e0b,
         emissiveIntensity: 0.8,
       });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
       sphere.position.set(worldX, worldY + 14, worldZ);
-      waypointGroupRef.current?.add(sphere);
+      sphere.userData.waypointId = wp.id;
+      group.add(sphere);
     });
   }, [site, grid, selectedWaypoint]);
 
@@ -342,9 +401,10 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
 
     const points: THREE.Vector3[] = [];
     route.path.forEach((pt) => {
-      const worldX = (pt.x - 50);
-      const worldZ = (pt.y - 50);
-      const worldY = ((pt.elevation - minElev) / elevSpan) * 20 + 0.6; // slightly above ground
+      const worldX = pt.x - 50;
+      const worldZ = pt.y - 50;
+      const normElev = Math.max(0, Math.min(1, (pt.elevation - minElev) / elevSpan));
+      const worldY = normElev * 20 + 0.6;
       points.push(new THREE.Vector3(worldX, worldY, worldZ));
     });
 
@@ -370,7 +430,7 @@ export const Terrain3D: React.FC<Terrain3DProps> = ({
           <span>3D TACTICAL SURFACE VIEWPORT</span>
         </div>
         <div className="text-[10px] text-slate-400 font-mono-tactical">
-          DRAG TO ROTATE • WHEEL TO ZOOM • ELEVATION EXAGGERATION: 1.5X
+          DRAG TO ROTATE • WHEEL TO ZOOM • CLICK BEACON TO SELECT
         </div>
       </div>
 

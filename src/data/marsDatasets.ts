@@ -11,7 +11,7 @@ export const MISSION_SITES: Record<'jezero' | 'gale', MissionSite> = {
     scienceFocus: 'Astrobiology, Delta Sedimentary Chronology, Lake Biosignature Preservation',
     elevationRange: [-2560, -2200],
     nominalRadiation: 0.23, // mSv/sol (RAD verified baseline)
-    gridResolutionMeters: 25,
+    gridResolutionMeters: 45,
     boxworkDetected: false,
     weather: {
       sol: 1248,
@@ -155,7 +155,7 @@ export const MISSION_SITES: Record<'jezero' | 'gale', MissionSite> = {
     scienceFocus: 'Boxwork Ridge Geochemistry, Habitability Evolution, Ancient Ground-Water Vein Systems',
     elevationRange: [-4500, -3200],
     nominalRadiation: 0.25, // mSv/sol (RAD measured baseline)
-    gridResolutionMeters: 30,
+    gridResolutionMeters: 110,
     boxworkDetected: true,
     weather: {
       sol: 4320,

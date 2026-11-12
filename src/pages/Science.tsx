@@ -1,5 +1,6 @@
 import React from 'react';
-import { Row, LAYERS, type Ctx } from './shared';
+import { Row, type Ctx } from './shared';
+import { LAYERS } from './missionHelpers';
 import { predictBiosignatureML } from '../ml/inferenceEngine';
 
 const potTone = (p: string) => (p === 'High' || p === 'Target Of Interest' ? 'ok' : p === 'Moderate' ? 'warn' : '');

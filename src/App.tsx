@@ -42,6 +42,8 @@ export const App: React.FC = () => {
   const [palette, setPalette] = useState(false);
   const [bell, setBell] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
+  const bellRef = useRef<HTMLDivElement>(null);
+
   const toast = (msg: string) => {
     const id = Date.now() + Math.random();
     setToasts((a) => [...a.slice(-2), { id, msg }]);
@@ -49,7 +51,7 @@ export const App: React.FC = () => {
   };
 
   const site = MISSION_SITES[siteId];
-  const grid = useMemo(() => generateTerrainGrid(siteId), [siteId]);
+  const grid = useMemo(() => generateTerrainGrid(siteId, site.gridResolutionMeters), [siteId, site.gridResolutionMeters]);
   const base = site.waypoints.find((w) => w.type === 'base') || site.waypoints[0];
   const firstTarget = (s: typeof site) => s.waypoints.find((w) => w.type === 'science') || s.waypoints[1];
 
@@ -57,8 +59,16 @@ export const App: React.FC = () => {
   const [target, setTarget] = useState(() => ({ x: firstTarget(site).coord.x, y: firstTarget(site).coord.y }));
 
   const route: RouteTraverse = useMemo(
-    () => calculateEVAPath(grid, { x: base.coord.x, y: base.coord.y }, target, [base, selected].filter(Boolean) as Waypoint[], site.gridResolutionMeters),
-    [grid, base, target, selected, site.gridResolutionMeters],
+    () =>
+      calculateEVAPath(
+        grid,
+        { x: base.coord.x, y: base.coord.y },
+        target,
+        [base, selected].filter(Boolean) as Waypoint[],
+        site.gridResolutionMeters,
+        site.waypoints,
+      ),
+    [grid, base, target, selected, site.gridResolutionMeters, site.waypoints],
   );
 
   const chooseSite = (id: 'jezero' | 'gale') => {
@@ -89,10 +99,23 @@ export const App: React.FC = () => {
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; }, [dark]);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((v) => !v); } };
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((v) => !v); }
+      if (e.key === 'Escape') setBell(false);
+    };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, []);
+
+  useEffect(() => {
+    if (!bell) return;
+    const onDown = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBell(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [bell]);
+
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
@@ -100,6 +123,7 @@ export const App: React.FC = () => {
   }, [route.totalDistanceKm, route.estimatedDurationMins]);
 
   const alerts = [
+    ...(route.maxSlopeDeg > 15 ? [{ Icon: AlertTriangle, text: `Active traverse max slope ${route.maxSlopeDeg}° exceeds 15° limit` }] : []),
     ...site.waypoints.filter((w) => w.slopeRisk > 15).map((w) => ({ Icon: AlertTriangle, text: `${w.name}: slope ${w.slopeRisk}° exceeds the 15° suit limit` })),
     ...SATELLITE_PASS_SCHEDULE.filter((s) => s.status !== 'Out of Range').map((s) => ({ Icon: Satellite, text: `${s.satelliteName.split(' (')[0]} ${s.status.toLowerCase()} · ${s.bandwidthMbps} Mbps` })),
   ];
@@ -150,10 +174,10 @@ export const App: React.FC = () => {
           <span className="badge brand">Sol {site.weather.sol}</span>
           <button className="btn round" aria-label="Toggle theme" title="Toggle theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
           <button className="btn hex" aria-label="Toggle ambient audio" title="Ambient audio" onClick={() => { marsAudio.startMarsWind(); setMuted(marsAudio.toggleMute()); }}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
-          <div style={{ position: 'relative' }}>
+          <div ref={bellRef} style={{ position: 'relative' }}>
             <button className="btn round" style={{ borderRadius: 14, position: 'relative' }} aria-label="Alerts" onClick={() => setBell(!bell)}><Bell size={17} />{alerts.length > 0 && <span className="dotn" />}</button>
             {bell && (
-              <div className="pop" onMouseLeave={() => setBell(false)}>
+              <div className="pop">
                 <h3 style={{ margin: '0 0 8px' }}>Alerts <small>{alerts.length} active</small></h3>
                 {alerts.map((a, n) => <div className="row" key={n}><span style={{ display: 'flex', gap: 10, alignItems: 'center', color: 'var(--ink)' }}><a.Icon size={16} color="var(--brand)" />{a.text}</span></div>)}
               </div>
